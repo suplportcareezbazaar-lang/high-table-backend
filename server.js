@@ -24,7 +24,7 @@ const {
 
 const recentActions = new Map();
 
-const { auth, agentOnly } = require("./utils/auth");
+const { auth, agentOnly, adminOnly } = require("./utils/auth");
 
 const { getAllMatches, getAllResults } = require("./services");
 
