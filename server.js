@@ -736,7 +736,7 @@ app.post("/api/admin/withdraw/reject", auth, adminOnly, async (req, res) => {
         await session.abortTransaction();
         session.endSession();
         res.status(400).json({ error: err.message });
-        
+
     }
 });
 
