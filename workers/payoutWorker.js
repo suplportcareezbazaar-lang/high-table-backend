@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const ledger = require("../utils/ledger");
+const Ledger = require('../models/Ledger');
 
 // 🔌 Provider (can be swapped later)
 const payoutProvider = require("../payouts/mock.provider");
