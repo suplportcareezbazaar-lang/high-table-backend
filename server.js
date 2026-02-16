@@ -318,7 +318,7 @@ app.post("/api/login", loginLimiter, authLimiter, async (req, res) => {
             registerFailure(req.ip);
             return res.status(400).json({ error: "Invalid login" });
         }
-        
+
         const bcrypt = require("bcryptjs");
         const ok = await bcrypt.compare(password, user.passwordHash);
 
@@ -425,28 +425,31 @@ app.get("/api/results", async (req, res) => {
 
 /* ================== WALLET ================== */
 
-app.get("/api/wallet", auth, async (req, res) => {
-    try {
-        const wallet = await Wallet.findOne({ userId: req.user.id });
+app.get("/api/wallet",
+    walletLimiter,
+    auth,
+    async (req, res) => {
+        try {
+            const wallet = await Wallet.findOne({ userId: req.user.id });
 
-        if (!wallet) {
-            return res.status(404).json({ error: "Wallet not found" });
+            if (!wallet) {
+                return res.status(404).json({ error: "Wallet not found" });
+            }
+
+            const history = await Ledger.find({ userId: req.user.id })
+                .sort({ createdAt: -1 })
+                .limit(50);
+
+            res.json({
+                balance: wallet.balance,
+                history
+            });
+
+        } catch (err) {
+            console.error("WALLET ERROR:", err.message);
+            res.status(500).json({ error: "Failed to load wallet" });
         }
-
-        const history = await Ledger.find({ userId: req.user.id })
-            .sort({ createdAt: -1 })
-            .limit(50);
-
-        res.json({
-            balance: wallet.balance,
-            history
-        });
-
-    } catch (err) {
-        console.error("WALLET ERROR:", err.message);
-        res.status(500).json({ error: "Failed to load wallet" });
-    }
-});
+    });
 
 /* ================== LOGOUT (FRONTEND SAFE) ================== */
 
@@ -459,6 +462,7 @@ app.post("/api/logout", (req, res) => {
 
 /* ================== WITHDRAW ================== */
 app.post("/api/wallet/withdraw",
+    walletLimiter,
     withdrawLimiter,
     auth,
     actionCooldown("withdraw", 10000),
@@ -529,7 +533,6 @@ app.post("/api/wallet/withdraw",
             res.status(400).json({ error: err.message });
         }
     });
-
 
 // ================== WALLET HISTORY ================== 
 
@@ -696,92 +699,108 @@ if (process.env.NODE_ENV === "production") {
 
 const { settleMatch } = require("./src/services/settlement.service");
 
-app.post("/api/admin/settle", auth, adminOnly, async (req, res) => {
-    const { matchId, winningTeam } = req.body;
+app.post("/api/admin/settle",
+    adminLimiter,
+    auth,
+    adminOnly,
+    async (req, res) => {
+        const { matchId, winningTeam } = req.body;
 
-    if (!matchId || !winningTeam)
-        return res.status(400).json({ error: "Missing fields" });
+        if (!matchId || !winningTeam)
+            return res.status(400).json({ error: "Missing fields" });
 
-    try {
-        await settleMatch(matchId, winningTeam);
-        res.json({ message: "Match settled successfully" });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+        try {
+            await settleMatch(matchId, winningTeam);
+            res.json({ message: "Match settled successfully" });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
-app.get("/api/admin/withdrawals", auth, adminOnly, async (req, res) => {
-    const withdrawals = await Withdrawal.find()
-        .sort({ createdAt: -1 });
+app.get("/api/admin/withdrawals",
+    adminLimiter,
+    auth,
+    adminOnly,
+    async (req, res) => {
+        const withdrawals = await Withdrawal.find()
+            .sort({ createdAt: -1 });
 
-    res.json(withdrawals);
-});
+        res.json(withdrawals);
+    });
 
-app.post("/api/admin/withdraw/approve", auth, adminOnly, async (req, res) => {
-    const { withdrawalId } = req.body;
+app.post("/api/admin/withdraw/approve",
+    adminLimiter,
+    auth,
+    adminOnly,
+    async (req, res) => {
+        const { withdrawalId } = req.body;
 
-    const withdrawal = await Withdrawal.findOne({ withdrawalId });
-
-    if (!withdrawal)
-        return res.status(404).json({ error: "Not found" });
-
-    if (withdrawal.status !== "PENDING")
-        return res.status(400).json({ error: "Invalid state" });
-
-    withdrawal.status = "APPROVED";
-    withdrawal.approvedBy = req.user.id;
-    withdrawal.approvedAt = new Date();
-
-    await withdrawal.save();
-
-    res.json({ message: "Withdrawal approved" });
-});
-
-app.post("/api/admin/withdraw/reject", auth, adminOnly, async (req, res) => {
-    const { withdrawalId } = req.body;
-
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    try {
-        const withdrawal = await Withdrawal.findOne({ withdrawalId }).session(session);
+        const withdrawal = await Withdrawal.findOne({ withdrawalId });
 
         if (!withdrawal)
-            throw new Error("Not found");
+            return res.status(404).json({ error: "Not found" });
 
         if (withdrawal.status !== "PENDING")
-            throw new Error("Invalid state");
+            return res.status(400).json({ error: "Invalid state" });
 
-        const wallet = await Wallet.findOne({
-            userId: withdrawal.userId
-        }).session(session);
+        withdrawal.status = "APPROVED";
+        withdrawal.approvedBy = req.user.id;
+        withdrawal.approvedAt = new Date();
 
-        wallet.balance += withdrawal.lockedAmount;
-        await wallet.save({ session });
+        await withdrawal.save();
 
-        await Ledger.create([{
-            userId: withdrawal.userId,
-            type: "withdraw_refund",
-            amount: withdrawal.lockedAmount,
-            balanceAfter: wallet.balance,
-            ref: withdrawalId
-        }], { session });
+        res.json({ message: "Withdrawal approved" });
+    });
 
-        withdrawal.status = "REJECTED";
-        await withdrawal.save({ session });
+app.post("/api/admin/withdraw/reject",
+    adminLimiter,
+    auth,
+    adminOnly,
+    async (req, res) => {
+        const { withdrawalId } = req.body;
 
-        await session.commitTransaction();
-        session.endSession();
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        res.json({ message: "Withdrawal rejected & refunded" });
+        try {
+            const withdrawal = await Withdrawal.findOne({ withdrawalId }).session(session);
 
-    } catch (err) {
-        await session.abortTransaction();
-        session.endSession();
-        res.status(400).json({ error: err.message });
+            if (!withdrawal)
+                throw new Error("Not found");
 
-    }
-});
+            if (withdrawal.status !== "PENDING")
+                throw new Error("Invalid state");
+
+            const wallet = await Wallet.findOne({
+                userId: withdrawal.userId
+            }).session(session);
+
+            wallet.balance += withdrawal.lockedAmount;
+            await wallet.save({ session });
+
+            await Ledger.create([{
+                userId: withdrawal.userId,
+                type: "withdraw_refund",
+                amount: withdrawal.lockedAmount,
+                balanceAfter: wallet.balance,
+                ref: withdrawalId
+            }], { session });
+
+            withdrawal.status = "REJECTED";
+            await withdrawal.save({ session });
+
+            await session.commitTransaction();
+            session.endSession();
+
+            res.json({ message: "Withdrawal rejected & refunded" });
+
+        } catch (err) {
+            await session.abortTransaction();
+            session.endSession();
+            res.status(400).json({ error: err.message });
+
+        }
+    });
 
 /* ================== SERVER ================== */
 
