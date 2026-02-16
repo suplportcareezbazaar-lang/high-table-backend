@@ -1,4 +1,6 @@
 const rateLimit = require("express-rate-limit");
+const ipFailures = new Map();
+const ipBlocks = new Map();
 
 /*
 |--------------------------------------------------------------------------
@@ -83,12 +85,49 @@ const actionCooldown = (actionKey, cooldownMs = 5000) => {
     };
 };
 
-module.exports.actionCooldown = actionCooldown;
+const ipProtection = (req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+
+    // If IP is blocked
+    if (ipBlocks.has(ip)) {
+        const blockUntil = ipBlocks.get(ip);
+        if (now < blockUntil) {
+            return res.status(403).json({
+                error: "Your IP is temporarily blocked due to suspicious activity"
+            });
+        } else {
+            ipBlocks.delete(ip);
+            ipFailures.delete(ip);
+        }
+    }
+
+    next();
+};
+
+const registerFailure = (ip) => {
+    const now = Date.now();
+
+    const record = ipFailures.get(ip) || { count: 0, firstAttempt: now };
+
+    record.count += 1;
+
+    // If more than 5 failures in 10 minutes → block 15 min
+    if (record.count >= 5 && (now - record.firstAttempt < 10 * 60 * 1000)) {
+        ipBlocks.set(ip, now + 15 * 60 * 1000);
+        ipFailures.delete(ip);
+    } else {
+        ipFailures.set(ip, record);
+    }
+};
 
 module.exports = {
     globalLimiter,
     loginLimiter,
     walletLimiter,
     withdrawLimiter,
-    adminLimiter
+    adminLimiter,
+    actionCooldown,
+    ipProtection,
+    registerFailure
 };
