@@ -22,7 +22,10 @@ const {
     loginLimiter,
     walletLimiter,
     withdrawLimiter,
-    adminLimiter
+    adminLimiter,
+    actionCooldown,
+    ipProtection,
+    registerFailure
 } = require("./middleware/security");
 
 const {
