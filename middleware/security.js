@@ -61,6 +61,30 @@ const adminLimiter = rateLimit({
     max: 100,
 });
 
+const actionCooldown = (actionKey, cooldownMs = 5000) => {
+    return (req, res, next) => {
+        const userId = req.user?.id;
+        if (!userId) return next();
+
+        const key = `${userId}_${actionKey}`;
+        const now = Date.now();
+
+        if (recentActions.has(key)) {
+            const lastTime = recentActions.get(key);
+            if (now - lastTime < cooldownMs) {
+                return res.status(429).json({
+                    error: "Please wait before repeating this action"
+                });
+            }
+        }
+
+        recentActions.set(key, now);
+        next();
+    };
+};
+
+module.exports.actionCooldown = actionCooldown;
+
 module.exports = {
     globalLimiter,
     loginLimiter,
