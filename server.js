@@ -453,73 +453,78 @@ app.post("/api/logout", (req, res) => {
 /* ================== BANK ================== */
 
 /* ================== WITHDRAW ================== */
-app.post("/api/wallet/withdraw", withdrawLimiter, auth, async (req, res) => {
-    const { amount } = req.body;
+app.post("/api/wallet/withdraw",
+    withdrawLimiter,
+    auth,
+    actionCooldown("withdraw", 10000),
+    async (req, res) => {
+        const { amount } = req.body;
 
-    if (!amount || amount < 500) {
-        return res.status(400).json({ error: "Minimum withdrawal is 500" });
-    }
-
-    try {
-        // 🛑 DAILY LIMIT CHECK (3 per 24h)
-        const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-        const withdrawCount = await Withdrawal.countDocuments({
-            userId: req.user.id,
-            createdAt: { $gte: last24h }
-        });
-
-        if (withdrawCount >= 3) {
-            return res.status(400).json({
-                error: "Daily withdrawal limit reached (3 per 24h)"
-            });
+        if (!amount || amount < 500) {
+            return res.status(400).json({ error: "Minimum withdrawal is 500" });
         }
 
-        const session = await mongoose.startSession();
-        session.startTransaction();
+        try {
+            // 🛑 DAILY LIMIT CHECK (3 per 24h)
+            const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-        const wallet = await Wallet.findOne({
-            userId: req.user.id
-        }).session(session);
+            const withdrawCount = await Withdrawal.countDocuments({
+                userId: req.user.id,
+                createdAt: { $gte: last24h }
+            });
 
-        if (!wallet) throw new Error("Wallet not found");
+            if (withdrawCount >= 3) {
+                return res.status(400).json({
+                    error: "Daily withdrawal limit reached (3 per 24h)"
+                });
+            }
 
-        if (wallet.balance < amount)
-            throw new Error("Insufficient balance");
+            const session = await mongoose.startSession();
+            session.startTransaction();
 
-        // 🔐 Lock balance immediately
-        wallet.balance -= amount;
-        await wallet.save({ session });
+            const wallet = await Wallet.findOne({
+                userId: req.user.id
+            }).session(session);
 
-        const withdrawalId = "WD_" + Date.now();
+            if (!wallet) throw new Error("Wallet not found");
 
-        await Withdrawal.create([{
-            withdrawalId,
-            userId: req.user.id,
-            amount,
-            lockedAmount: amount,
-            status: "PENDING"
-        }], { session });
+            if (wallet.balance < amount)
+                throw new Error("Insufficient balance");
 
-        await Ledger.create([{
-            userId: req.user.id,
-            type: "withdraw_lock",
-            amount: -amount,
-            balanceAfter: wallet.balance,
-            ref: withdrawalId,
-            meta: { action: "withdraw_request" }
-        }], { session });
+            // 🔐 Lock balance immediately
+            wallet.balance -= amount;
+            await wallet.save({ session });
 
-        await session.commitTransaction();
-        session.endSession();
+            const withdrawalId = "WD_" + Date.now();
 
-        res.json({ message: "Withdrawal request submitted" });
+            await Withdrawal.create([{
+                withdrawalId,
+                userId: req.user.id,
+                amount,
+                lockedAmount: amount,
+                status: "PENDING"
+            }], { session });
 
-    } catch (err) {
-        console.error("WITHDRAW ERROR:", err.message);
-        res.status(400).json({ error: err.message });
-    }
-});
+            await Ledger.create([{
+                userId: req.user.id,
+                type: "withdraw_lock",
+                amount: -amount,
+                balanceAfter: wallet.balance,
+                ref: withdrawalId,
+                meta: { action: "withdraw_request" }
+            }], { session });
+
+            await session.commitTransaction();
+            session.endSession();
+
+            res.json({ message: "Withdrawal request submitted" });
+
+        } catch (err) {
+            console.error("WITHDRAW ERROR:", err.message);
+            res.status(400).json({ error: err.message });
+        }
+    });
+
 
 // ================== WALLET HISTORY ================== 
 
@@ -560,104 +565,108 @@ app.get("/api/matches", (req, res) => {
     }
 }); */
 
-app.post("/api/bet/place", auth, betLimiter, async (req, res) => {
-    const { matchId, team, amount } = req.body;
+app.post("/api/bet/place",
+    auth,
+    betLimiter,
+    actionCooldown("bet", 5000),
+    async (req, res) => {
+        const { matchId, team, amount } = req.body;
 
-    if (!matchId || !team || !amount)
-        return res.status(400).json({ error: "Missing fields" });
+        if (!matchId || !team || !amount)
+            return res.status(400).json({ error: "Missing fields" });
 
-    if (amount < 20)
-        return res.status(400).json({ error: "Minimum bet is 20 tokens" });
+        if (amount < 20)
+            return res.status(400).json({ error: "Minimum bet is 20 tokens" });
 
-    const session = await mongoose.startSession();
-    session.startTransaction();
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-    try {
-        // 🔐 Check existing pending bet
-        const existing = await Bet.findOne({
-            userId: req.user.id,
-            matchId,
-            status: "pending"
-        }).session(session);
-
-        if (existing) {
-            throw new Error("You already have an active bet on this match");
-        }
-
-        // 🔐 Load wallet
-        const wallet = await Wallet.findOne({
-            userId: req.user.id
-        }).session(session);
-
-        if (!wallet) throw new Error("Wallet not found");
-
-        if (wallet.balance < amount)
-            throw new Error("Insufficient balance");
-
-        // 🔐 Deduct balance
-        wallet.balance -= Number(amount);
-        await wallet.save({ session });
-
-        // 🔐 Create bet
-        const bet = await Bet.create([{
-            userId: req.user.id,
-            matchId,
-            selectedTeam: team,
-            mainBet: Math.floor(amount * 0.75),
-            hedgeBet: Math.floor(amount * 0.25),
-            odds: 2,
-            status: "pending"
-        }], { session });
-
-        // 🔐 Create ledger entry
-        await Ledger.create([{
-            userId: req.user.id,
-            type: "bet",
-            amount: -Number(amount),
-            balanceAfter: wallet.balance,
-            ref: bet[0]._id,
-            meta: { matchId, team }
-        }], { session });
-
-        // 🔐 Agent commission (Mongo version)
-        const bettor = await User.findById(req.user.id).session(session);
-
-        if (bettor?.agentId) {
-            const agent = await User.findOne({
-                _id: bettor.agentId,
-                role: "agent",
-                approved: true
+        try {
+            // 🔐 Check existing pending bet
+            const existing = await Bet.findOne({
+                userId: req.user.id,
+                matchId,
+                status: "pending"
             }).session(session);
 
-            if (agent) {
-                await Ledger.create([{
-                    userId: agent._id,
-                    type: "commission",
-                    amount: Math.floor(amount * 0.02),
-                    balanceAfter: 0, // optional (we'll improve later)
-                    ref: bet[0]._id,
-                    meta: { downline: bettor._id }
-                }], { session });
-
-                await Wallet.updateOne(
-                    { userId: agent._id },
-                    { $inc: { balance: Math.floor(amount * 0.02) } },
-                    { session }
-                );
+            if (existing) {
+                throw new Error("You already have an active bet on this match");
             }
+
+            // 🔐 Load wallet
+            const wallet = await Wallet.findOne({
+                userId: req.user.id
+            }).session(session);
+
+            if (!wallet) throw new Error("Wallet not found");
+
+            if (wallet.balance < amount)
+                throw new Error("Insufficient balance");
+
+            // 🔐 Deduct balance
+            wallet.balance -= Number(amount);
+            await wallet.save({ session });
+
+            // 🔐 Create bet
+            const bet = await Bet.create([{
+                userId: req.user.id,
+                matchId,
+                selectedTeam: team,
+                mainBet: Math.floor(amount * 0.75),
+                hedgeBet: Math.floor(amount * 0.25),
+                odds: 2,
+                status: "pending"
+            }], { session });
+
+            // 🔐 Create ledger entry
+            await Ledger.create([{
+                userId: req.user.id,
+                type: "bet",
+                amount: -Number(amount),
+                balanceAfter: wallet.balance,
+                ref: bet[0]._id,
+                meta: { matchId, team }
+            }], { session });
+
+            // 🔐 Agent commission (Mongo version)
+            const bettor = await User.findById(req.user.id).session(session);
+
+            if (bettor?.agentId) {
+                const agent = await User.findOne({
+                    _id: bettor.agentId,
+                    role: "agent",
+                    approved: true
+                }).session(session);
+
+                if (agent) {
+                    await Ledger.create([{
+                        userId: agent._id,
+                        type: "commission",
+                        amount: Math.floor(amount * 0.02),
+                        balanceAfter: 0, // optional (we'll improve later)
+                        ref: bet[0]._id,
+                        meta: { downline: bettor._id }
+                    }], { session });
+
+                    await Wallet.updateOne(
+                        { userId: agent._id },
+                        { $inc: { balance: Math.floor(amount * 0.02) } },
+                        { session }
+                    );
+                }
+            }
+
+            await session.commitTransaction();
+            session.endSession();
+
+            res.json({ message: "Bet placed successfully" });
+
+        } catch (err) {
+            await session.abortTransaction();
+            session.endSession();
+            res.status(400).json({ error: err.message });
         }
-
-        await session.commitTransaction();
-        session.endSession();
-
-        res.json({ message: "Bet placed successfully" });
-
-    } catch (err) {
-        await session.abortTransaction();
-        session.endSession();
-        res.status(400).json({ error: err.message });
-    }
-});
+    });
 
 const { processPayouts } = require("./workers/payoutWorker");
 
