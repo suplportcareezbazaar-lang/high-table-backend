@@ -15,6 +15,7 @@ const Deposit = require("./src/models/Deposit");
 const Bet = require("./src/models/Bet");
 const Withdrawal = require("./src/models/Withdrawal");
 const mongoose = require("mongoose");
+const { ipProtection, registerFailure } = require("./middleware/security");
 
 const {
     globalLimiter,
@@ -42,7 +43,7 @@ app.use(helmet({
 }));
 
 app.use(globalLimiter);
-
+app.use(ipProtection);
 app.disable("x-powered-by");
 
 const limiter = rateLimit({
@@ -312,13 +313,15 @@ app.post("/api/login", loginLimiter, authLimiter, async (req, res) => {
         const user = await User.findOne({ username });
 
         if (!user) {
+            registerFailure(req.ip);
             return res.status(400).json({ error: "Invalid login" });
         }
-
+        
         const bcrypt = require("bcryptjs");
         const ok = await bcrypt.compare(password, user.passwordHash);
 
         if (!ok) {
+            registerFailure(req.ip);
             return res.status(401).json({ error: "Wrong password" });
         }
 
