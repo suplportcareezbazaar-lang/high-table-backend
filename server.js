@@ -17,6 +17,14 @@ const Withdrawal = require("./src/models/Withdrawal");
 const mongoose = require("mongoose");
 
 const {
+    globalLimiter,
+    loginLimiter,
+    walletLimiter,
+    withdrawLimiter,
+    adminLimiter
+} = require("./middleware/security");
+
+const {
     authLimiter,
     paymentLimiter,
     betLimiter
@@ -33,6 +41,8 @@ app.use(helmet({
     contentSecurityPolicy: false
 }));
 
+app.use(globalLimiter);
+
 app.disable("x-powered-by");
 
 const limiter = rateLimit({
@@ -44,7 +54,7 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-//const DEV_MODE = process.env.NODE_ENV !== "production";
+const DEV_MODE = process.env.NODE_ENV !== "production";
 
 const allowedOrigins = process.env.NODE_ENV === "production"
     ? [process.env.FRONTEND_URL]
@@ -54,9 +64,13 @@ const allowedOrigins = process.env.NODE_ENV === "production"
     ];
 
 app.use(cors({
-    origin: [
-        "https://high-table-frontend.onrender.com"
-    ],
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
     credentials: true
 }));
 
@@ -243,7 +257,7 @@ app.post("/api/payment/webhook", paymentLimiter, async (req, res) => {
 
 /* ================== REGISTER ================== */
 
-app.post("/api/register", authLimiter, async (req, res) => {
+app.post("/api/register", loginLimiter, authLimiter, async (req, res) => {
     try {
         const { username, email, mobile, password } = req.body;
 
@@ -291,7 +305,7 @@ app.post("/api/register", authLimiter, async (req, res) => {
 
 const { createToken } = require("./utils/auth");
 
-app.post("/api/login", authLimiter, async (req, res) => {
+app.post("/api/login", loginLimiter, authLimiter, async (req, res) => {
     try {
         const { username, password } = req.body;
 
@@ -439,25 +453,41 @@ app.post("/api/logout", (req, res) => {
 /* ================== BANK ================== */
 
 /* ================== WITHDRAW ================== */
-app.post("/api/wallet/withdraw", auth, async (req, res) => {
+app.post("/api/wallet/withdraw", withdrawLimiter, auth, async (req, res) => {
     const { amount } = req.body;
 
     if (!amount || amount < 500) {
         return res.status(400).json({ error: "Minimum withdrawal is 500" });
     }
 
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
     try {
-        const wallet = await Wallet.findOne({ userId: req.user.id }).session(session);
+        // 🛑 DAILY LIMIT CHECK (3 per 24h)
+        const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        const withdrawCount = await Withdrawal.countDocuments({
+            userId: req.user.id,
+            createdAt: { $gte: last24h }
+        });
+
+        if (withdrawCount >= 3) {
+            return res.status(400).json({
+                error: "Daily withdrawal limit reached (3 per 24h)"
+            });
+        }
+
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        const wallet = await Wallet.findOne({
+            userId: req.user.id
+        }).session(session);
 
         if (!wallet) throw new Error("Wallet not found");
 
         if (wallet.balance < amount)
             throw new Error("Insufficient balance");
 
-        // 🔐 Lock amount immediately
+        // 🔐 Lock balance immediately
         wallet.balance -= amount;
         await wallet.save({ session });
 
@@ -486,8 +516,7 @@ app.post("/api/wallet/withdraw", auth, async (req, res) => {
         res.json({ message: "Withdrawal request submitted" });
 
     } catch (err) {
-        await session.abortTransaction();
-        session.endSession();
+        console.error("WITHDRAW ERROR:", err.message);
         res.status(400).json({ error: err.message });
     }
 });
