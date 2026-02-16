@@ -15,7 +15,6 @@ const Deposit = require("./src/models/Deposit");
 const Bet = require("./src/models/Bet");
 const Withdrawal = require("./src/models/Withdrawal");
 const mongoose = require("mongoose");
-const { ipProtection, registerFailure } = require("./middleware/security");
 
 const {
     globalLimiter,
