@@ -12,10 +12,6 @@ function withinNext24Hours(startTime) {
 async function normalize(fetchFn, sport) {
     try {
         const data = await fetchFn();
-        
-        console.log(`==== RAW ${sport} DATA ====`);
-        console.log(JSON.stringify(data?.slice(0, 2), null, 2));
-        
         if (!Array.isArray(data)) return [];
 
         const now = Date.now();
@@ -27,28 +23,20 @@ async function normalize(fetchFn, sport) {
 
                 let status = "upcoming";
 
-                // 🔥 Use API status first
-                if (m.status === "live") {
+                // ✅ LIVE: started but not 6 hours old
+                if (start <= now && (now - start) <= 6 * 60 * 60 * 1000) {
                     status = "live";
-                } else if (m.status === "finished") {
-                    status = "finished";
-                } else if (start > now) {
-                    status = "upcoming";
-                } else {
-                    status = "finished";
                 }
 
                 return {
-                    id: `${sport}_${m.externalMatchId}`, // safer unique id
+                    id: m.externalMatchId,
                     sport,
-                    league: m.league || "Unknown League",
+                    league: m.league || sport.toUpperCase(),
                     team1: m.team1,
                     team2: m.team2,
                     startTime: new Date(m.startTime).toISOString(),
                     status,
-                    bettingOpen:
-                        status === "upcoming" &&
-                        (start - now > 30 * 60 * 1000), // close betting 30 min before
+                    bettingOpen: status === "upcoming",
                     team1Logo: m.team1Logo || null,
                     team2Logo: m.team2Logo || null,
                     leagueLogo: m.leagueLogo || null
@@ -56,7 +44,8 @@ async function normalize(fetchFn, sport) {
             })
             .filter(m =>
                 m.status === "live" ||
-                (m.status === "upcoming" && withinNext24Hours(m.startTime))
+                (m.status === "upcoming" &&
+                    new Date(m.startTime).getTime() - now <= 24 * 60 * 60 * 1000)
             );
 
     } catch (err) {
