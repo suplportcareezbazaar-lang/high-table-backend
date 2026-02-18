@@ -8,30 +8,54 @@ const BASE_URL = "https://v1.basketball.api-sports.io";
 async function getBasketballMatches() {
     if (!API_KEY) return [];
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
 
-    const res = await axios.get(`${BASE_URL}/games`, {
-        headers: { "x-apisports-key": API_KEY },
-        params: { date: today }
-    });
+    const formatDate = d => d.toISOString().slice(0, 10);
 
-    const games = res.data?.response || [];
+    try {
+        const [todayRes, tomorrowRes] = await Promise.all([
+            axios.get(`${BASE_URL}/games`, {
+                headers: { "x-apisports-key": API_KEY },
+                params: { date: formatDate(today) }
+            }),
+            axios.get(`${BASE_URL}/games`, {
+                headers: { "x-apisports-key": API_KEY },
+                params: { date: formatDate(tomorrow) }
+            })
+        ]);
 
-    return games.map(g => ({
-        externalMatchId: `basketball_${g.id}`,
-        sport: "basketball",
-        league: g.league?.name || "Basketball",
-        country: g.country?.name || "International",
-        tournament: g.league?.name || "Basketball",
-        team1: g.teams?.home?.name || "Home",
-        team2: g.teams?.away?.name || "Away",
-        team1Logo: g.teams?.home?.logo || null,
-        team2Logo: g.teams?.away?.logo || null,
-        leagueLogo: g.league?.logo || null,
-        startTime: g.date,
-        status: normalizeStatus(g.status?.short),
-        bettingOpen: isBettingOpen(g.date)
-    }));
+        const games = [
+            ...(todayRes.data?.response || []),
+            ...(tomorrowRes.data?.response || [])
+        ];
+
+        return games.map(g => ({
+            externalMatchId: `basketball_${g.id}`,
+            sport: "basketball",
+            league: g.league?.name || "Basketball",
+            team1: g.teams?.home?.name,
+            team2: g.teams?.away?.name,
+            team1Logo: g.teams?.home?.logo,
+            team2Logo: g.teams?.away?.logo,
+            leagueLogo: g.league?.logo,
+            startTime: g.date,
+            status: mapBasketStatus(g.status?.short),
+            bettingOpen: isBettingOpen(g.date)
+        }));
+
+    } catch (err) {
+        console.error("Basketball API error:", err.message);
+        return [];
+    }
+}
+
+function mapBasketStatus(code) {
+    if (!code) return "upcoming";
+    if (["FT"].includes(code)) return "finished";
+    if (["Q1","Q2","Q3","Q4","OT","LIVE"].includes(code)) return "live";
+    return "upcoming";
 }
 
 /* ================== RESULT FETCH ================== */
