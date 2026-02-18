@@ -9,13 +9,13 @@ function withinNext24Hours(startTime) {
     return t > now && (t - now) <= 24 * 60 * 60 * 1000;
 }
 
+/* ================= NORMALIZER ================= */
 async function normalize(fetchFn, sport) {
     try {
         const data = await fetchFn();
         if (!Array.isArray(data)) return [];
 
         const now = Date.now();
-        const next24h = now + 24 * 60 * 60 * 1000;
 
         return data
             .filter(m => m.team1 && m.team2 && m.startTime)
@@ -24,11 +24,13 @@ async function normalize(fetchFn, sport) {
 
                 let status = "upcoming";
 
-                // ✅ TRUST API STATUS FIRST
-                if (m.status === "live") {
+                // LIVE = already started but not older than 6 hours
+                if (start <= now && (now - start) <= 6 * 60 * 60 * 1000) {
                     status = "live";
-                } 
-                else if (start <= now) {
+                }
+
+                // FINISHED = older than 6 hours
+                if (start < now && (now - start) > 6 * 60 * 60 * 1000) {
                     status = "finished";
                 }
 
@@ -46,12 +48,8 @@ async function normalize(fetchFn, sport) {
                     leagueLogo: m.leagueLogo || null
                 };
             })
-            .filter(m =>
-                m.status === "live" ||
-                (m.status === "upcoming" &&
-                    new Date(m.startTime).getTime() > now &&
-                    new Date(m.startTime).getTime() <= next24h)
-            );
+            // ✅ Only hide finished matches
+            .filter(m => m.status !== "finished");
 
     } catch (err) {
         console.error(`❌ ${sport} normalize failed:`, err.message);
