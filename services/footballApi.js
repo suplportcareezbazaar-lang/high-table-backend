@@ -7,30 +7,56 @@ const BASE_URL = "https://v3.football.api-sports.io";
 async function getFootballMatches() {
     if (!API_KEY) return [];
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
 
-    const res = await axios.get(`${BASE_URL}/fixtures`, {
-        headers: { "x-apisports-key": API_KEY },
-        params: { date: today }
-    });
+    const formatDate = d => d.toISOString().slice(0, 10);
 
-    const fixtures = res.data?.response || [];
+    try {
+        const [todayRes, tomorrowRes] = await Promise.all([
+            axios.get(`${BASE_URL}/fixtures`, {
+                headers: { "x-apisports-key": API_KEY },
+                params: { date: formatDate(today) }
+            }),
+            axios.get(`${BASE_URL}/fixtures`, {
+                headers: { "x-apisports-key": API_KEY },
+                params: { date: formatDate(tomorrow) }
+            })
+        ]);
 
-    return fixtures.map(f => ({
-        externalMatchId: `football_${f.fixture.id}`,
-        sport: "football",
-        league: f.league?.name || "Football",
-        country: f.league?.country || "International",
-        tournament: f.league?.name || "Football",
-        team1: f.teams?.home?.name || "Home",
-        team2: f.teams?.away?.name || "Away",
-        team1Logo: f.teams?.home?.logo || null,
-        team2Logo: f.teams?.away?.logo || null,
-        leagueLogo: f.league?.logo || null,
-        startTime: f.fixture?.date,
-        status: normalizeStatus(f.fixture?.status?.short),
-        bettingOpen: isBettingOpen(f.fixture?.date)
-    }));
+        const fixtures = [
+            ...(todayRes.data?.response || []),
+            ...(tomorrowRes.data?.response || [])
+        ];
+
+        return fixtures.map(f => ({
+            externalMatchId: `football_${f.fixture.id}`,
+            sport: "football",
+            league: f.league?.name || "Football",
+            team1: f.teams?.home?.name,
+            team2: f.teams?.away?.name,
+            team1Logo: f.teams?.home?.logo,
+            team2Logo: f.teams?.away?.logo,
+            leagueLogo: f.league?.logo,
+            startTime: f.fixture?.date,
+            status: mapFootballStatus(f.fixture?.status?.short),
+            bettingOpen: isBettingOpen(f.fixture?.date)
+        }));
+
+    } catch (err) {
+        console.error("Football API error:", err.message);
+        return [];
+    }
+}
+
+function mapFootballStatus(code) {
+    if (!code) return "upcoming";
+
+    if (["FT", "AET", "PEN"].includes(code)) return "finished";
+    if (["1H", "2H", "LIVE", "ET", "BT"].includes(code)) return "live";
+
+    return "upcoming";
 }
 
 /* ================== RESULTS ================== */
