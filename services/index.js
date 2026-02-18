@@ -15,6 +15,7 @@ async function normalize(fetchFn, sport) {
         if (!Array.isArray(data)) return [];
 
         const now = Date.now();
+        const next24h = now + 24 * 60 * 60 * 1000;
 
         return data
             .filter(m => m.team1 && m.team2 && m.startTime)
@@ -23,9 +24,12 @@ async function normalize(fetchFn, sport) {
 
                 let status = "upcoming";
 
-                // ✅ LIVE: started but not 6 hours old
-                if (start <= now && (now - start) <= 6 * 60 * 60 * 1000) {
+                // ✅ TRUST API STATUS FIRST
+                if (m.status === "live") {
                     status = "live";
+                } 
+                else if (start <= now) {
+                    status = "finished";
                 }
 
                 return {
@@ -45,7 +49,8 @@ async function normalize(fetchFn, sport) {
             .filter(m =>
                 m.status === "live" ||
                 (m.status === "upcoming" &&
-                    new Date(m.startTime).getTime() - now <= 24 * 60 * 60 * 1000)
+                    new Date(m.startTime).getTime() > now &&
+                    new Date(m.startTime).getTime() <= next24h)
             );
 
     } catch (err) {
