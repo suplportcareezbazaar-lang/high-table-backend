@@ -11,7 +11,7 @@ async function normalize(fetchFn, sport) {
         if (!Array.isArray(data)) return [];
 
         const now = Date.now();
-        const DAY = 24 * 60 * 60 * 1000;
+        const next24h = now + 24 * 60 * 60 * 1000;
 
         return data
             .filter(m => m.team1 && m.team2 && m.startTime)
@@ -20,19 +20,9 @@ async function normalize(fetchFn, sport) {
 
                 let status = "upcoming";
 
-                // ✅ PRIORITY 1: If API says live
-                if (m.status === "live") {
+                // LIVE = started within last 6 hours
+                if (start <= now && (now - start) <= 6 * 60 * 60 * 1000) {
                     status = "live";
-                }
-
-                // ✅ PRIORITY 2: Time-based live fallback (started within 6h)
-                else if (start <= now && (now - start) <= 6 * 60 * 60 * 1000) {
-                    status = "live";
-                }
-
-                // ✅ Otherwise upcoming
-                else if (start > now) {
-                    status = "upcoming";
                 }
 
                 return {
@@ -52,12 +42,12 @@ async function normalize(fetchFn, sport) {
             .filter(m => {
                 const start = new Date(m.startTime).getTime();
 
-                // ✅ Keep LIVE matches
+                // Keep LIVE matches
                 if (m.status === "live") return true;
 
-                // ✅ Keep only upcoming within 24 hours
+                // Keep upcoming matches within next 24 hours
                 if (m.status === "upcoming") {
-                    return start > now && (start - now) <= DAY;
+                    return start > now && start <= next24h;
                 }
 
                 return false;
