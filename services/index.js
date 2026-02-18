@@ -14,31 +14,42 @@ async function normalize(fetchFn, sport) {
         const data = await fetchFn();
         if (!Array.isArray(data)) return [];
 
+        const now = Date.now();
+
         return data
             .filter(m => m.team1 && m.team2 && m.startTime)
             .map(m => {
                 const start = new Date(m.startTime).getTime();
-                const now = Date.now();
 
                 let status = "upcoming";
-                if (m.status === "live") status = "live";
-                else if (start <= now) status = "live";
+
+                // 🔥 Use API status first
+                if (m.status === "live") {
+                    status = "live";
+                } else if (m.status === "finished") {
+                    status = "finished";
+                } else if (start > now) {
+                    status = "upcoming";
+                } else {
+                    status = "finished";
+                }
 
                 return {
-                    id: m.externalMatchId,
+                    id: `${sport}_${m.externalMatchId}`, // safer unique id
                     sport,
                     league: m.league || "Unknown League",
                     team1: m.team1,
                     team2: m.team2,
                     startTime: new Date(m.startTime).toISOString(),
                     status,
-                    bettingOpen: m.bettingOpen ?? (start - now > 30 * 60000),
+                    bettingOpen:
+                        status === "upcoming" &&
+                        (start - now > 30 * 60 * 1000), // close betting 30 min before
                     team1Logo: m.team1Logo || null,
                     team2Logo: m.team2Logo || null,
                     leagueLogo: m.leagueLogo || null
                 };
             })
-            // ✅ FILTER ONLY HERE
             .filter(m =>
                 m.status === "live" ||
                 (m.status === "upcoming" && withinNext24Hours(m.startTime))
