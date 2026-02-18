@@ -1,92 +1,70 @@
 const axios = require("axios");
 
 const CRICAPI_KEY = process.env.CRICAPI_KEY;
-const BASE_URL = "https://api.cricapi.com/v1/matches";
+const BASE_URL = "https://api.cricapi.com/v1";
 
-/* ================= FETCH ALL MATCHES (Paginated) ================= */
-async function fetchAllMatches() {
+/* ================== MATCH LIST ================== */
+async function getCricketMatches() {
     if (!CRICAPI_KEY) {
         console.error("❌ CRICAPI_KEY missing");
         return [];
     }
 
-    let allMatches = [];
-    let offset = 0;
-    let totalRows = 1;
-
     try {
-        while (offset < totalRows) {
-            const res = await axios.get(BASE_URL, {
-                params: {
-                    apikey: CRICAPI_KEY,
-                    offset
-                },
-                timeout: 15000
-            });
+        const res = await axios.get(`${BASE_URL}/matches`, {
+            params: {
+                apikey: CRICAPI_KEY,
+                offset: 0
+            },
+            timeout: 15000
+        });
 
-            if (res.data.status !== "success") break;
-
-            const data = Array.isArray(res.data.data) ? res.data.data : [];
-            const info = res.data.info || {};
-
-            totalRows = info.totalRows || 0;
-
-            allMatches = allMatches.concat(data);
-            offset += data.length;
-
-            // Safety break (avoid infinite loop)
-            if (data.length === 0) break;
+        if (res.data?.status !== "success") {
+            console.error("❌ CricAPI returned error");
+            return [];
         }
 
-        return allMatches;
+        const matches = Array.isArray(res.data?.data)
+            ? res.data.data
+            : [];
+
+        const now = Date.now();
+        const next24h = now + 24 * 60 * 60 * 1000;
+
+        return matches
+            .filter(m => m.dateTimeGMT)
+            .map(m => {
+                const start = new Date(m.dateTimeGMT).getTime();
+                const isLive = /live|playing/i.test(m.status || "");
+
+                return {
+                    externalMatchId: `cricket_${m.id}`,
+                    sport: "cricket",
+                    league: m.series || "Cricket",
+                    team1: m.teams?.[0] || "Team A",
+                    team2: m.teams?.[1] || "Team B",
+                    startTime: m.dateTimeGMT,
+                    status: isLive
+                        ? "live"
+                        : start > now && start <= next24h
+                            ? "upcoming"
+                            : "ignore",
+                    team1Logo: null,
+                    team2Logo: null,
+                    leagueLogo: null
+                };
+            })
+            .filter(m => m.status !== "ignore");
 
     } catch (err) {
-        console.error("❌ CricAPI fetch error:", err.message);
+        console.error("❌ CricAPI error:", err.message);
         return [];
     }
 }
 
-/* ================== MATCH LIST ================== */
-async function getCricketMatches() {
-    const matches = await fetchAllMatches();
-    const now = new Date();
-    const next24 = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-    return matches
-        .filter(m => m.dateTimeGMT)
-        .filter(m => {
-            const matchTime = new Date(m.dateTimeGMT);
-            return (
-                // LIVE
-                /live|playing/i.test(m.status || "") ||
-
-                // UPCOMING within 24h
-                (matchTime > now && matchTime <= next24)
-            );
-        })
-        .map(m => {
-            const matchTime = new Date(m.dateTimeGMT);
-            const isLive = /live|playing/i.test(m.status || "");
-
-            return {
-                externalMatchId: `cricket_${m.id}`,
-                sport: "cricket",
-                league: m.series || "Cricket",
-                team1: m.teams?.[0] || "Team A",
-                team2: m.teams?.[1] || "Team B",
-                team1Logo: null, // you can map manually if needed
-                team2Logo: null,
-                leagueLogo: null,
-                startTime: matchTime.toISOString(),
-                status: isLive ? "live" : "upcoming",
-                bettingOpen: !isLive
-            };
-        });
-}
-
 /* ================== RESULTS ================== */
 async function getCricketResults() {
-    return []; // optional for now
+    return [];
 }
 
 module.exports = {
