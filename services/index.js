@@ -3,13 +3,8 @@ const { getFootballMatches, getFootballResults } = require("./footballApi");
 const { getBasketballMatches, getBasketballResults } = require("./basketballApi");
 const { getMmaMatches, getMmaResults } = require("./mmaApi");
 
-function withinNext24Hours(startTime) {
-    const now = Date.now();
-    const t = new Date(startTime).getTime();
-    return t > now && (t - now) <= 24 * 60 * 60 * 1000;
-}
-
 /* ================= NORMALIZER ================= */
+
 async function normalize(fetchFn, sport) {
     try {
         const data = await fetchFn();
@@ -75,6 +70,7 @@ async function normalize(fetchFn, sport) {
 }
 
 /* ================= MATCHES ================= */
+
 async function getAllMatches() {
     const results = await Promise.all([
         normalize(getCricketMatches, "cricket"),
@@ -87,6 +83,7 @@ async function getAllMatches() {
 }
 
 /* ================= RESULTS ================= */
+
 async function getAllResults() {
     const results = await Promise.allSettled([
         getCricketResults(),
