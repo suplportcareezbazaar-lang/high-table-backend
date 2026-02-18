@@ -16,6 +16,7 @@ async function normalize(fetchFn, sport) {
         if (!Array.isArray(data)) return [];
 
         const now = Date.now();
+        const DAY = 24 * 60 * 60 * 1000;
 
         return data
             .filter(m => m.team1 && m.team2 && m.startTime)
@@ -24,14 +25,19 @@ async function normalize(fetchFn, sport) {
 
                 let status = "upcoming";
 
-                // LIVE = already started but not older than 6 hours
-                if (start <= now && (now - start) <= 6 * 60 * 60 * 1000) {
+                // ✅ PRIORITY 1: If API says live
+                if (m.status === "live") {
                     status = "live";
                 }
 
-                // FINISHED = older than 6 hours
-                if (start < now && (now - start) > 6 * 60 * 60 * 1000) {
-                    status = "finished";
+                // ✅ PRIORITY 2: Time-based live fallback (started within 6h)
+                else if (start <= now && (now - start) <= 6 * 60 * 60 * 1000) {
+                    status = "live";
+                }
+
+                // ✅ Otherwise upcoming
+                else if (start > now) {
+                    status = "upcoming";
                 }
 
                 return {
@@ -48,8 +54,19 @@ async function normalize(fetchFn, sport) {
                     leagueLogo: m.leagueLogo || null
                 };
             })
-            // ✅ Only hide finished matches
-            .filter(m => m.status !== "finished");
+            .filter(m => {
+                const start = new Date(m.startTime).getTime();
+
+                // ✅ Keep LIVE matches
+                if (m.status === "live") return true;
+
+                // ✅ Keep only upcoming within 24 hours
+                if (m.status === "upcoming") {
+                    return start > now && (start - now) <= DAY;
+                }
+
+                return false;
+            });
 
     } catch (err) {
         console.error(`❌ ${sport} normalize failed:`, err.message);
