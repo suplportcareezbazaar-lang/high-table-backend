@@ -12,6 +12,10 @@ function withinNext24Hours(startTime) {
 async function normalize(fetchFn, sport) {
     try {
         const data = await fetchFn();
+        
+        console.log(`==== RAW ${sport} DATA ====`);
+        console.log(JSON.stringify(data?.slice(0, 2), null, 2));
+        
         if (!Array.isArray(data)) return [];
 
         const now = Date.now();
