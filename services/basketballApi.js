@@ -15,6 +15,18 @@ function mapBasketStatus(code) {
     return "upcoming";
 }
 
+function isImportantLeague(name = "") {
+    const n = name.toLowerCase();
+
+    return (
+        n.includes("nba") ||
+        n.includes("fiba") ||
+        n.includes("world cup") ||
+        n.includes("olympic") ||
+        n.includes("euroleague")
+    );
+}
+
 async function getBasketballMatches() {
     if (!API_KEY) return [];
 
@@ -38,7 +50,13 @@ async function getBasketballMatches() {
 
         const games = responses.flatMap(r => r.data?.response || []);
 
-        return games.map(g => {
+        const filtered = games
+            .filter(g => isImportantLeague(g.league?.name))
+            .filter(g => g.teams?.home && g.teams?.away);
+
+        console.log("Basketball important matches:", filtered.length);
+
+        return filtered.map(g => {
             const id = `basketball_${g.id}`;
 
             return {
@@ -46,10 +64,10 @@ async function getBasketballMatches() {
                 externalMatchId: id,
                 sport: "basketball",
                 league: g.league?.name || "Basketball",
-                team1: g.teams?.home?.name,
-                team2: g.teams?.away?.name,
-                team1Logo: g.teams?.home?.logo,
-                team2Logo: g.teams?.away?.logo,
+                team1: g.teams.home.name,
+                team2: g.teams.away.name,
+                team1Logo: g.teams.home.logo,
+                team2Logo: g.teams.away.logo,
                 startTime: g.date,
                 status: mapBasketStatus(g.status?.short),
                 bettingOpen: isBettingOpen(g.date)
