@@ -28,8 +28,13 @@ function isRequiredMatch(match) {
     const type = match.matchType.toLowerCase();
     const name = (match.name || "").toLowerCase();
 
-    // Only ODI and T20
-    if (type !== "odi" && type !== "t20") return false;
+    // Accept any T20 type
+    const isT20 = type.includes("t20");
+
+    // Accept ODI
+    const isODI = type.includes("odi");
+
+    if (!isT20 && !isODI) return false;
 
     // IPL
     if (name.includes("premier league") || name.includes("ipl")) return true;
@@ -37,8 +42,11 @@ function isRequiredMatch(match) {
     // U19
     if (name.includes("u19")) return true;
 
-    // Women matches
+    // Women
     if (name.includes("women")) return true;
+
+    // Also allow international ODI/T20
+    if (isT20 || isODI) return true;
 
     return false;
 }
