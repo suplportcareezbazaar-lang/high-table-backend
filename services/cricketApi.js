@@ -105,15 +105,20 @@ async function getCricketMatches() {
         const upcomingJson = await upcomingRes.json();
 
         const now = new Date();
-        const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
         const upcomingMatches = (upcomingJson.data || [])
             .filter(m => m.teams?.length >= 2)
-            .filter(isImportantMatch)
             .filter(m => {
                 if (!m.dateTimeGMT) return false;
+
                 const matchTime = new Date(m.dateTimeGMT);
-                return matchTime > now && matchTime <= sevenDaysLater;
+
+                // Only future matches
+                if (matchTime <= now) return false;
+
+                // Only ODI & T20
+                const type = (m.matchType || "").toLowerCase();
+                return type.includes("t20") || type.includes("odi");
             })
             .map(match => ({
                 id: `cricket_${match.id}`,
@@ -125,7 +130,7 @@ async function getCricketMatches() {
                 team1Logo: null,
                 team2Logo: null,
                 startTime: match.dateTimeGMT,
-                status: normalizeStatus(match, false),
+                status: "upcoming",
                 bettingOpen: isBettingOpen(match.dateTimeGMT)
             }));
 
