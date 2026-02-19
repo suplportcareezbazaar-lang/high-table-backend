@@ -1,12 +1,11 @@
 const fetch = require("node-fetch");
 
-const API_KEY = process.env.CRICKET_API_KEY;
+const API_KEY = process.env.CRICAPI_KEY;   // ✅ FIXED NAME
 const BASE_URL = "https://api.cricapi.com/v1";
 
-// Simple fetch wrapper with timeout
 async function safeFetch(url) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10 sec timeout
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
         const res = await fetch(url, { signal: controller.signal });
@@ -20,38 +19,38 @@ async function safeFetch(url) {
 }
 
 async function getCricketMatches() {
+    if (!API_KEY) {
+        console.error("CRICAPI_KEY missing in environment");
+        return [];
+    }
+
     try {
         console.log("Fetching cricket matches...");
 
-        const url = `${BASE_URL}/matches?apikey=${API_KEY}&offset=0`;
+        // 🔥 Use currentMatches endpoint (this works)
+        const url = `${BASE_URL}/currentMatches?apikey=${API_KEY}`;
 
         const json = await safeFetch(url);
 
-        if (!json) {
-            console.error("No response from API");
-            return [];
-        }
-
-        if (json.status !== "success") {
-            console.error("API returned failure:", json);
-            return [];
-        }
-
-        if (!Array.isArray(json.data)) {
-            console.error("Data is not array:", json);
+        if (!json || json.status !== "success" || !Array.isArray(json.data)) {
+            console.error("Invalid API response");
             return [];
         }
 
         const matches = json.data.map(match => ({
-            externalMatchId: match.id,
-            team1: match.teams?.[0] || null,
-            team2: match.teams?.[1] || null,
+            externalMatchId: `cricket_${match.id}`,
+            team1: match.teamInfo?.[0]?.name || match.teams?.[0] || null,
+            team2: match.teamInfo?.[1]?.name || match.teams?.[1] || null,
+            team1Logo: match.teamInfo?.[0]?.img || null,
+            team2Logo: match.teamInfo?.[1]?.img || null,
             startTime: match.dateTimeGMT,
             league: match.name,
-            status: match.status || "upcoming"
+            status: match.matchStarted && !match.matchEnded
+                ? "live"
+                : "upcoming"
         }));
 
-        console.log("Total matches fetched:", matches.length);
+        console.log("Total cricket matches:", matches.length);
 
         return matches;
 
