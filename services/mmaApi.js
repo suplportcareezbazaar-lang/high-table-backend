@@ -12,13 +12,19 @@ async function getMmaMatches() {
     if (!API_KEY) return [];
 
     try {
-        const res = await axios.get(`${BASE_URL}/fights`, {
+        const response = await axios.get(`${BASE_URL}/fights`, {
             headers: { "x-apisports-key": API_KEY }
         });
 
-        const fights = res.data?.response || [];
+        const fights = response.data?.response || [];
 
-        return fights.map(f => {
+        const filtered = fights.filter(f =>
+            f.league?.name?.toLowerCase().includes("ufc")
+        );
+
+        console.log("MMA important fights:", filtered.length);
+
+        return filtered.map(f => {
             const id = `mma_${f.id}`;
 
             return {
@@ -26,12 +32,12 @@ async function getMmaMatches() {
                 externalMatchId: id,
                 sport: "mma",
                 league: f.league?.name || "MMA",
-                team1: f.fighters?.red?.name,
-                team2: f.fighters?.blue?.name,
-                team1Logo: f.fighters?.red?.logo,
-                team2Logo: f.fighters?.blue?.logo,
+                team1: f.fighters?.home?.name,
+                team2: f.fighters?.away?.name,
+                team1Logo: null,
+                team2Logo: null,
                 startTime: f.date,
-                status: f.status === "live" ? "live" : "upcoming",
+                status: "upcoming",
                 bettingOpen: isBettingOpen(f.date)
             };
         });
