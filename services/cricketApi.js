@@ -1,6 +1,8 @@
 const API_KEY = process.env.CRICAPI_KEY;
 const BASE_URL = "https://api.cricapi.com/v1";
 
+/* ================= HELPERS ================= */
+
 function isBettingOpen(startTime) {
     if (!startTime) return false;
     return (new Date(startTime) - Date.now()) / 60000 > 30;
@@ -12,52 +14,53 @@ function normalizeStatus(match) {
     const now = new Date();
     const matchTime = new Date(match.dateTimeGMT);
 
-    if (match.status?.toLowerCase().includes("won") ||
-        match.status?.toLowerCase().includes("result")) {
+    const statusText = (match.status || "").toLowerCase();
+
+    if (statusText.includes("won") || statusText.includes("result"))
         return "finished";
-    }
 
     if (matchTime <= now) return "live";
 
     return "upcoming";
 }
 
+/* ================= FILTER LOGIC ================= */
+
 function isRequiredMatch(match) {
     if (!match.matchType) return false;
 
     const type = match.matchType.toLowerCase();
     const name = (match.name || "").toLowerCase();
-    const team1 = (match.teams?.[0] || "").toLowerCase();
-    const team2 = (match.teams?.[1] || "").toLowerCase();
 
-    // Only ODI & T20 formats
+    // Only T20 or ODI formats
     const isT20 = type.includes("t20");
     const isODI = type.includes("odi");
 
     if (!isT20 && !isODI) return false;
 
-    // IPL
-    if (name.includes("premier league") || name.includes("ipl")) return true;
-
-    // ICC tournaments
+    // Keep important tournaments only
     if (
         name.includes("icc") ||
         name.includes("world cup") ||
         name.includes("asia cup") ||
-        name.includes("championship")
-    ) return true;
+        name.includes("champions") ||
+        name.includes("premier league") ||
+        name.includes("ipl")
+    ) {
+        return true;
+    }
 
-    // India matches
-    if (team1.includes("india") || team2.includes("india")) return true;
-
-    // U19 international
-    if (name.includes("u19")) return true;
-
-    // Women international
-    if (name.includes("women")) return true;
+    // Allow India international matches
+    if (
+        match.teams?.some(t => t.toLowerCase().includes("india"))
+    ) {
+        return true;
+    }
 
     return false;
 }
+
+/* ================= MAIN FUNCTION ================= */
 
 async function getCricketMatches() {
     if (!API_KEY) {
@@ -66,7 +69,7 @@ async function getCricketMatches() {
     }
 
     try {
-        console.log("Fetching cricket matches (Filtered IPL / U19 / ODI)...");
+        console.log("Fetching cricket matches (ICC / International filter)...");
 
         const url = `${BASE_URL}/currentMatches?apikey=${API_KEY}&offset=0`;
         const res = await fetch(url);
@@ -79,8 +82,12 @@ async function getCricketMatches() {
 
         const rawMatches = json.data || [];
 
+        console.log("Total matches from API:", rawMatches.length);
+
         const now = new Date();
-        const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+        const fiveDaysLater = new Date(
+            now.getTime() + 5 * 24 * 60 * 60 * 1000
+        );
 
         const filtered = rawMatches.filter(m => {
             if (!m.teams || m.teams.length < 2) return false;
@@ -88,7 +95,8 @@ async function getCricketMatches() {
             if (!isRequiredMatch(m)) return false;
 
             const matchTime = new Date(m.dateTimeGMT);
-            return matchTime >= now && matchTime <= threeDaysLater;
+
+            return matchTime >= now && matchTime <= fiveDaysLater;
         });
 
         const matches = filtered.map(match => {
@@ -105,7 +113,8 @@ async function getCricketMatches() {
                 team2Logo: null,
                 startTime: match.dateTimeGMT,
                 status: normalizeStatus(match),
-                bettingOpen: isBettingOpen(match.dateTimeGMT)
+                bettingOpen: isBettingOpen(match.dateTimeGMT),
+                sportLogo: "/assets/logos/cricket.png"
             };
         });
 
