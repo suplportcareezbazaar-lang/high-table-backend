@@ -105,12 +105,7 @@ async function getCricketMatches() {
         );
 
         const filtered = rawMatches.filter(m => {
-            if (!m.teams || m.teams.length < 2) return false;
-            if (!m.dateTimeGMT) return false;
-            if (!isRequiredMatch(m)) return false;
-
-            const matchTime = new Date(m.dateTimeGMT);
-            return matchTime >= now && matchTime <= fiveDaysLater;
+            return m.teams && m.teams.length >= 2 && m.dateTimeGMT;
         });
 
         const matches = filtered.map(match => {
