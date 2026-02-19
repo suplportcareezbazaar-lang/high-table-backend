@@ -17,33 +17,30 @@ function normalizeStatus(match) {
         return "finished";
     }
 
-    if (matchTime <= now) {
-        return "live";
-    }
+    if (matchTime <= now) return "live";
 
     return "upcoming";
 }
 
-async function fetchFromOffset(offset = 0) {
-    const url = `${BASE_URL}/matches?apikey=${API_KEY}&offset=${offset}`;
+function isRequiredMatch(match) {
+    if (!match.matchType) return false;
 
-    const res = await fetch(url);
-    const json = await res.json();
+    const type = match.matchType.toLowerCase();
+    const name = (match.name || "").toLowerCase();
 
-    if (!json || json.status !== "success") {
-        console.error("Cricket API failed:", json);
-        return [];
-    }
+    // Only ODI and T20
+    if (type !== "odi" && type !== "t20") return false;
 
-    const data = json.data || [];
-    const totalRows = json.info?.totalRows || 0;
+    // IPL
+    if (name.includes("premier league") || name.includes("ipl")) return true;
 
-    if (offset + 25 < totalRows) {
-        const next = await fetchFromOffset(offset + 25);
-        return data.concat(next);
-    }
+    // U19
+    if (name.includes("u19")) return true;
 
-    return data;
+    // Women matches
+    if (name.includes("women")) return true;
+
+    return false;
 }
 
 async function getCricketMatches() {
@@ -53,21 +50,30 @@ async function getCricketMatches() {
     }
 
     try {
-        console.log("Fetching cricket matches...");
+        console.log("Fetching cricket matches (Filtered IPL / U19 / ODI)...");
 
-        const rawMatches = await fetchFromOffset(0);
+        const url = `${BASE_URL}/matches?apikey=${API_KEY}&offset=0`;
+        const res = await fetch(url);
+        const json = await res.json();
 
-        console.log("Raw cricket matches:", rawMatches.length);
+        if (!json || json.status !== "success") {
+            console.error("Cricket API failed:", json);
+            return [];
+        }
+
+        const rawMatches = json.data || [];
 
         const now = new Date();
+        const threeDaysLater = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
 
         const filtered = rawMatches.filter(m => {
             if (!m.teams || m.teams.length < 2) return false;
             if (!m.dateTimeGMT) return false;
+            if (!isRequiredMatch(m)) return false;
 
             const matchTime = new Date(m.dateTimeGMT);
 
-            return matchTime >= new Date(now.getTime() - 6 * 60 * 60 * 1000);
+            return matchTime >= now && matchTime <= threeDaysLater;
         });
 
         const matches = filtered.map(match => {
@@ -88,7 +94,7 @@ async function getCricketMatches() {
             };
         });
 
-        console.log("Processed cricket matches:", matches.length);
+        console.log("Filtered cricket matches:", matches.length);
 
         return matches;
 
