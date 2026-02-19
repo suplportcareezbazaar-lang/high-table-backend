@@ -11,16 +11,15 @@ async function getCricketMatches() {
     }
 
     try {
-        const res = await axios.get(`${BASE_URL}/matches`, {
+        const res = await axios.get(`${BASE_URL}/currentMatches`, {
             params: {
-                apikey: CRICAPI_KEY,
-                offset: 0
+                apikey: CRICAPI_KEY
             },
             timeout: 15000
         });
 
         if (res.data?.status !== "success") {
-            console.error("❌ CricAPI returned error");
+            console.error("❌ CricAPI error response");
             return [];
         }
 
@@ -37,6 +36,14 @@ async function getCricketMatches() {
                 const start = new Date(m.dateTimeGMT).getTime();
                 const isLive = /live|playing/i.test(m.status || "");
 
+                let status = "ignore";
+
+                if (isLive) {
+                    status = "live";
+                } else if (start > now && start <= next24h) {
+                    status = "upcoming";
+                }
+
                 return {
                     externalMatchId: `cricket_${m.id}`,
                     sport: "cricket",
@@ -44,11 +51,7 @@ async function getCricketMatches() {
                     team1: m.teams?.[0] || "Team A",
                     team2: m.teams?.[1] || "Team B",
                     startTime: m.dateTimeGMT,
-                    status: isLive
-                        ? "live"
-                        : start > now && start <= next24h
-                            ? "upcoming"
-                            : "ignore",
+                    status,
                     team1Logo: null,
                     team2Logo: null,
                     leagueLogo: null
