@@ -1,72 +1,77 @@
-const axios = require("axios");
+const fetch = require("node-fetch");
 
-const API_KEY = process.env.CRICAPI_KEY;
-const BASE_URL = "https://api.cricapi.com/v1/currentMatches";
+const API_KEY = process.env.CRICKET_API_KEY;
+const BASE_URL = "https://api.cricapi.com/v1";
 
-async function getCricketMatches() {
-    if (!API_KEY) {
-        console.error("CRICAPI_KEY missing");
-        return [];
-    }
-
+// Fetch Current (Live) Matches
+async function getCurrentMatches() {
     try {
-        const res = await axios.get(BASE_URL, {
-            params: {
-                apikey: API_KEY,
-                offset: 0
-            },
-            timeout: 10000
-        });
+        const res = await fetch(`${BASE_URL}/currentMatches?apikey=${API_KEY}&offset=0`);
+        const json = await res.json();
 
-        if (res.data.status !== "success") {
-            console.error("CricAPI failed:", res.data);
+        if (json.status !== "success" || !json.data) {
+            console.error("Current matches API failed");
             return [];
         }
 
-        const matches = res.data.data || [];
-        const now = Date.now();
-
-        return matches
-            .filter(m => m.dateTimeGMT && m.teams?.length === 2)
-            .map(m => {
-                const start = new Date(m.dateTimeGMT).getTime();
-
-                let status = "upcoming";
-
-                if (
-                    m.status &&
-                    !/finished|completed|result/i.test(m.status) &&
-                    start <= now
-                ) {
-                    status = "live";
-                }
-
-                return {
-                    externalMatchId: `cricket_${m.id}`,
-                    sport: "cricket",
-                    league: m.series || "Cricket",
-                    team1: m.teams[0],
-                    team2: m.teams[1],
-                    startTime: m.dateTimeGMT,
-                    status,
-                    bettingOpen: status === "upcoming",
-                    team1Logo: null,
-                    team2Logo: null,
-                    leagueLogo: null
-                };
-            });
+        return json.data.map(match => ({
+            externalMatchId: match.id,
+            team1: match.teams?.[0] || null,
+            team2: match.teams?.[1] || null,
+            startTime: match.dateTimeGMT,
+            league: match.name,
+            status: "live"
+        }));
 
     } catch (err) {
-        console.error("CricAPI error:", err.message);
+        console.error("Error fetching current matches:", err.message);
         return [];
     }
 }
 
-async function getCricketResults() {
-    return [];
+// Fetch All Matches (Upcoming + Others)
+async function getAllMatchesList() {
+    try {
+        const res = await fetch(`${BASE_URL}/matches?apikey=${API_KEY}&offset=0`);
+        const json = await res.json();
+
+        if (json.status !== "success" || !json.data) {
+            console.error("Matches API failed");
+            return [];
+        }
+
+        return json.data.map(match => ({
+            externalMatchId: match.id,
+            team1: match.teams?.[0] || null,
+            team2: match.teams?.[1] || null,
+            startTime: match.dateTimeGMT,
+            league: match.name,
+            status: "upcoming"
+        }));
+
+    } catch (err) {
+        console.error("Error fetching matches:", err.message);
+        return [];
+    }
+}
+
+// MAIN EXPORT FUNCTION
+async function getCricketMatches() {
+    const [live, all] = await Promise.all([
+        getCurrentMatches(),
+        getAllMatchesList()
+    ]);
+
+    // Merge & remove duplicates by ID
+    const map = new Map();
+
+    [...live, ...all].forEach(match => {
+        map.set(match.externalMatchId, match);
+    });
+
+    return Array.from(map.values());
 }
 
 module.exports = {
-    getCricketMatches,
-    getCricketResults
+    getCricketMatches
 };
