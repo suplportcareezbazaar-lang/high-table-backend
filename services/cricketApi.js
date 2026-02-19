@@ -27,11 +27,11 @@ function isRequiredMatch(match) {
 
     const type = match.matchType.toLowerCase();
     const name = (match.name || "").toLowerCase();
+    const team1 = (match.teams?.[0] || "").toLowerCase();
+    const team2 = (match.teams?.[1] || "").toLowerCase();
 
-    // Accept any T20 type
+    // Only ODI & T20 formats
     const isT20 = type.includes("t20");
-
-    // Accept ODI
     const isODI = type.includes("odi");
 
     if (!isT20 && !isODI) return false;
@@ -39,14 +39,22 @@ function isRequiredMatch(match) {
     // IPL
     if (name.includes("premier league") || name.includes("ipl")) return true;
 
-    // U19
+    // ICC tournaments
+    if (
+        name.includes("icc") ||
+        name.includes("world cup") ||
+        name.includes("asia cup") ||
+        name.includes("championship")
+    ) return true;
+
+    // India matches
+    if (team1.includes("india") || team2.includes("india")) return true;
+
+    // U19 international
     if (name.includes("u19")) return true;
 
-    // Women
+    // Women international
     if (name.includes("women")) return true;
-
-    // Also allow international ODI/T20
-    if (isT20 || isODI) return true;
 
     return false;
 }
@@ -72,7 +80,7 @@ async function getCricketMatches() {
         const rawMatches = json.data || [];
 
         const now = new Date();
-        const threeDaysLater = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
+        const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
         const filtered = rawMatches.filter(m => {
             if (!m.teams || m.teams.length < 2) return false;
@@ -80,7 +88,6 @@ async function getCricketMatches() {
             if (!isRequiredMatch(m)) return false;
 
             const matchTime = new Date(m.dateTimeGMT);
-
             return matchTime >= now && matchTime <= threeDaysLater;
         });
 
