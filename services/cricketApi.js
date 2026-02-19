@@ -1,9 +1,5 @@
-const fetch = require("node-fetch");
-
 const API_KEY = process.env.CRICAPI_KEY;
 const BASE_URL = "https://api.cricapi.com/v1";
-
-/* ================= HELPERS ================= */
 
 function isBettingOpen(startTime) {
     if (!startTime) return false;
@@ -50,25 +46,52 @@ async function fetchFromOffset(offset = 0) {
     return data;
 }
 
-/* ================= MAIN FUNCTION ================= */
-
 async function getCricketMatches() {
     if (!API_KEY) {
         console.error("CRICAPI_KEY missing");
         return [];
     }
 
-    const url = `https://api.cricapi.com/v1/matches?apikey=${API_KEY}&offset=0`;
-
     try {
-        const res = await fetch(url);
-        const json = await res.json();
+        console.log("Fetching cricket matches...");
 
-        console.log("===== RAW CRICAPI RESPONSE =====");
-        console.log(JSON.stringify(json, null, 2));
-        console.log("================================");
+        const rawMatches = await fetchFromOffset(0);
 
-        return []; // temporarily return empty
+        console.log("Raw cricket matches:", rawMatches.length);
+
+        const now = new Date();
+
+        const filtered = rawMatches.filter(m => {
+            if (!m.teams || m.teams.length < 2) return false;
+            if (!m.dateTimeGMT) return false;
+
+            const matchTime = new Date(m.dateTimeGMT);
+
+            return matchTime >= new Date(now.getTime() - 6 * 60 * 60 * 1000);
+        });
+
+        const matches = filtered.map(match => {
+            const id = `cricket_${match.id}`;
+
+            return {
+                id,
+                externalMatchId: id,
+                sport: "cricket",
+                league: match.name || "Cricket",
+                team1: match.teams[0],
+                team2: match.teams[1],
+                team1Logo: null,
+                team2Logo: null,
+                startTime: match.dateTimeGMT,
+                status: normalizeStatus(match),
+                bettingOpen: isBettingOpen(match.dateTimeGMT)
+            };
+        });
+
+        console.log("Processed cricket matches:", matches.length);
+
+        return matches;
+
     } catch (err) {
         console.error("Cricket API error:", err.message);
         return [];
