@@ -3,73 +3,62 @@ const fetch = require("node-fetch");
 const API_KEY = process.env.CRICKET_API_KEY;
 const BASE_URL = "https://api.cricapi.com/v1";
 
-// Fetch Current (Live) Matches
-async function getCurrentMatches() {
+// Simple fetch wrapper with timeout
+async function safeFetch(url) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10 sec timeout
+
     try {
-        const res = await fetch(`${BASE_URL}/currentMatches?apikey=${API_KEY}&offset=0`);
-        const json = await res.json();
-
-        if (json.status !== "success" || !json.data) {
-            console.error("Current matches API failed");
-            return [];
-        }
-
-        return json.data.map(match => ({
-            externalMatchId: match.id,
-            team1: match.teams?.[0] || null,
-            team2: match.teams?.[1] || null,
-            startTime: match.dateTimeGMT,
-            league: match.name,
-            status: "live"
-        }));
-
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        return await res.json();
     } catch (err) {
-        console.error("Error fetching current matches:", err.message);
-        return [];
+        clearTimeout(timeout);
+        console.error("Fetch failed:", err.message);
+        return null;
     }
 }
 
-// Fetch All Matches (Upcoming + Others)
-async function getAllMatchesList() {
-    try {
-        const res = await fetch(`${BASE_URL}/matches?apikey=${API_KEY}&offset=0`);
-        const json = await res.json();
-
-        if (json.status !== "success" || !json.data) {
-            console.error("Matches API failed");
-            return [];
-        }
-
-        return json.data.map(match => ({
-            externalMatchId: match.id,
-            team1: match.teams?.[0] || null,
-            team2: match.teams?.[1] || null,
-            startTime: match.dateTimeGMT,
-            league: match.name,
-            status: "upcoming"
-        }));
-
-    } catch (err) {
-        console.error("Error fetching matches:", err.message);
-        return [];
-    }
-}
-
-// MAIN EXPORT FUNCTION
 async function getCricketMatches() {
-    const [live, all] = await Promise.all([
-        getCurrentMatches(),
-        getAllMatchesList()
-    ]);
+    try {
+        console.log("Fetching cricket matches...");
 
-    // Merge & remove duplicates by ID
-    const map = new Map();
+        const url = `${BASE_URL}/matches?apikey=${API_KEY}&offset=0`;
 
-    [...live, ...all].forEach(match => {
-        map.set(match.externalMatchId, match);
-    });
+        const json = await safeFetch(url);
 
-    return Array.from(map.values());
+        if (!json) {
+            console.error("No response from API");
+            return [];
+        }
+
+        if (json.status !== "success") {
+            console.error("API returned failure:", json);
+            return [];
+        }
+
+        if (!Array.isArray(json.data)) {
+            console.error("Data is not array:", json);
+            return [];
+        }
+
+        const matches = json.data.map(match => ({
+            externalMatchId: match.id,
+            team1: match.teams?.[0] || null,
+            team2: match.teams?.[1] || null,
+            startTime: match.dateTimeGMT,
+            league: match.name,
+            status: match.status || "upcoming"
+        }));
+
+        console.log("Total matches fetched:", matches.length);
+
+        return matches;
+
+    } catch (err) {
+        console.error("Cricket API error:", err.message);
+        return [];
+    }
 }
 
 module.exports = {
