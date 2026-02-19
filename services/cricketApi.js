@@ -32,23 +32,41 @@ function isRequiredMatch(match) {
     const type = match.matchType.toLowerCase();
     const name = (match.name || "").toLowerCase();
 
-    const isT20 = type.includes("t20");
-    const isODI = type.includes("odi");
+    // Only T20 & ODI
+    if (!(type.includes("t20") || type.includes("odi"))) {
+        return false;
+    }
 
-    if (!isT20 && !isODI) return false;
+    // Remove domestic competitions
+    const domesticKeywords = [
+        "provincial",
+        "division",
+        "league 2",
+        "a team",
+        "emerging",
+        "academy",
+        "lions",
+        "challenge"
+    ];
 
+    if (domesticKeywords.some(k => name.includes(k))) {
+        return false;
+    }
+
+    // Accept International tournaments
     if (
         name.includes("icc") ||
         name.includes("world cup") ||
         name.includes("asia cup") ||
         name.includes("champions") ||
-        name.includes("premier league") ||
-        name.includes("ipl")
+        name.includes("tri-series") ||
+        name.includes("series")
     ) {
         return true;
     }
 
-    if (match.teams?.some(t => t.toLowerCase().includes("india"))) {
+    // Accept country vs country matches
+    if (match.teams && match.teams.length === 2) {
         return true;
     }
 
