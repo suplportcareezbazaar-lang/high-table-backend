@@ -1,63 +1,48 @@
 const axios = require("axios");
 
-const CRICAPI_KEY = process.env.CRICAPI_KEY;
-const BASE_URL = "https://api.cricapi.com/v1";
+const API_KEY = process.env.CRICAPI_KEY;
+const BASE_URL = "https://api.cricapi.com/v1/matches";
 
-/* ================== MATCH LIST ================== */
-async function getCricketMatches() {
-    if (!CRICAPI_KEY) {
+/* =========================
+   FETCH ALL MATCHES (Paginated)
+========================= */
+async function fetchAllMatches() {
+    if (!API_KEY) {
         console.error("❌ CRICAPI_KEY missing");
         return [];
     }
 
+    let allMatches = [];
+    let offset = 0;
+    let totalRows = 0;
+
     try {
-        const res = await axios.get(`${BASE_URL}/currentMatches`, {
-            params: {
-                apikey: CRICAPI_KEY
-            },
-            timeout: 15000
-        });
+        do {
+            const res = await axios.get(BASE_URL, {
+                params: {
+                    apikey: API_KEY,
+                    offset: offset
+                },
+                timeout: 15000
+            });
 
-        if (res.data?.status !== "success") {
-            console.error("❌ CricAPI error response");
-            return [];
-        }
+            if (res.data.status !== "success") {
+                console.error("❌ CricAPI failed");
+                return [];
+            }
 
-        const matches = Array.isArray(res.data?.data)
-            ? res.data.data
-            : [];
+            const data = res.data.data || [];
+            const info = res.data.info || {};
 
-        const now = Date.now();
-        const next24h = now + 24 * 60 * 60 * 1000;
+            totalRows = info.totalRows || 0;
 
-        return matches
-            .filter(m => m.dateTimeGMT)
-            .map(m => {
-                const start = new Date(m.dateTimeGMT).getTime();
-                const isLive = /live|playing/i.test(m.status || "");
+            allMatches = allMatches.concat(data);
 
-                let status = "ignore";
+            offset += data.length;
 
-                if (isLive) {
-                    status = "live";
-                } else if (start > now && start <= next24h) {
-                    status = "upcoming";
-                }
+        } while (offset < totalRows);
 
-                return {
-                    externalMatchId: `cricket_${m.id}`,
-                    sport: "cricket",
-                    league: m.series || "Cricket",
-                    team1: m.teams?.[0] || "Team A",
-                    team2: m.teams?.[1] || "Team B",
-                    startTime: m.dateTimeGMT,
-                    status,
-                    team1Logo: null,
-                    team2Logo: null,
-                    leagueLogo: null
-                };
-            })
-            .filter(m => m.status !== "ignore");
+        return allMatches;
 
     } catch (err) {
         console.error("❌ CricAPI error:", err.message);
@@ -65,7 +50,61 @@ async function getCricketMatches() {
     }
 }
 
-/* ================== RESULTS ================== */
+/* =========================
+   NORMALIZE MATCHES
+========================= */
+async function getCricketMatches() {
+    const rawMatches = await fetchAllMatches();
+    const now = Date.now();
+
+    return rawMatches
+        .filter(m => m.dateTimeGMT && m.teams?.length === 2)
+        .map(m => {
+            const start = new Date(m.dateTimeGMT).getTime();
+
+            let status = "upcoming";
+
+            // LIVE if started but not finished
+            if (
+                m.status &&
+                !/finished|completed|result/i.test(m.status) &&
+                start <= now
+            ) {
+                status = "live";
+            }
+
+            return {
+                externalMatchId: `cricket_${m.id}`,
+                sport: "cricket",
+                league: m.series || "Cricket",
+                team1: m.teams[0],
+                team2: m.teams[1],
+                team1Logo: null,
+                team2Logo: null,
+                leagueLogo: null,
+                startTime: m.dateTimeGMT,
+                status,
+                bettingOpen: status === "upcoming"
+            };
+        })
+        .filter(m => {
+            const start = new Date(m.startTime).getTime();
+
+            // LIVE
+            if (m.status === "live") return true;
+
+            // Upcoming within 24 hours
+            return (
+                m.status === "upcoming" &&
+                start > now &&
+                (start - now) <= 24 * 60 * 60 * 1000
+            );
+        });
+}
+
+/* =========================
+   RESULTS (Optional Later)
+========================= */
 async function getCricketResults() {
     return [];
 }
