@@ -68,7 +68,7 @@ async function getCricketMatches() {
     try {
         console.log("Fetching cricket matches (Filtered IPL / U19 / ODI)...");
 
-        const url = `${BASE_URL}/matches?apikey=${API_KEY}&offset=0`;
+        const url = `${BASE_URL}/currentMatches?apikey=${API_KEY}&offset=0`;
         const res = await fetch(url);
         const json = await res.json();
 
