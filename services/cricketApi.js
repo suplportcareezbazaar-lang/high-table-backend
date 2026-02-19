@@ -1,3 +1,5 @@
+const axios = require("axios");
+
 const API_KEY = process.env.CRICAPI_KEY;
 const BASE_URL = "https://api.cricapi.com/v1";
 
@@ -24,21 +26,17 @@ function normalizeStatus(match) {
     return "upcoming";
 }
 
-/* ================= FILTER LOGIC ================= */
-
 function isRequiredMatch(match) {
     if (!match.matchType) return false;
 
     const type = match.matchType.toLowerCase();
     const name = (match.name || "").toLowerCase();
 
-    // Only T20 or ODI formats
     const isT20 = type.includes("t20");
     const isODI = type.includes("odi");
 
     if (!isT20 && !isODI) return false;
 
-    // Keep important tournaments only
     if (
         name.includes("icc") ||
         name.includes("world cup") ||
@@ -50,17 +48,14 @@ function isRequiredMatch(match) {
         return true;
     }
 
-    // Allow India international matches
-    if (
-        match.teams?.some(t => t.toLowerCase().includes("india"))
-    ) {
+    if (match.teams?.some(t => t.toLowerCase().includes("india"))) {
         return true;
     }
 
     return false;
 }
 
-/* ================= MAIN FUNCTION ================= */
+/* ================= MAIN ================= */
 
 async function getCricketMatches() {
     if (!API_KEY) {
@@ -69,11 +64,13 @@ async function getCricketMatches() {
     }
 
     try {
-        console.log("Fetching cricket matches (ICC / International filter)...");
+        console.log("Fetching cricket matches...");
 
         const url = `${BASE_URL}/currentMatches?apikey=${API_KEY}&offset=0`;
-        const res = await fetch(url);
-        const json = await res.json();
+
+        const response = await axios.get(url, { timeout: 15000 });
+
+        const json = response.data;
 
         if (!json || json.status !== "success") {
             console.error("Cricket API failed:", json);
@@ -95,7 +92,6 @@ async function getCricketMatches() {
             if (!isRequiredMatch(m)) return false;
 
             const matchTime = new Date(m.dateTimeGMT);
-
             return matchTime >= now && matchTime <= fiveDaysLater;
         });
 
