@@ -1,57 +1,47 @@
-const API_KEY = process.env.SPORTSDB_KEY || "1";
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json/1";
 
-/* ================= FILTER ================= */
-
-function isImportantBasketball(league = "") {
-    league = league.toLowerCase();
-
-    return (
-        league.includes("nba") ||
-        league.includes("fiba") ||
-        league.includes("euroleague") ||
-        league.includes("world cup")
-    );
+function formatMatch(event, sport) {
+    return {
+        id: `${sport}_${event.idEvent}`,
+        externalMatchId: `${sport}_${event.idEvent}`,
+        sport,
+        league: event.strLeague || sport,
+        team1: event.strHomeTeam,
+        team2: event.strAwayTeam,
+        team1Logo: null,
+        team2Logo: null,
+        startTime: event.dateEvent + "T00:00:00",
+        status: "upcoming",
+        bettingOpen: true
+    };
 }
-
-/* ================= MAIN ================= */
 
 async function getBasketballMatches() {
     try {
-        console.log("Fetching basketball matches...");
+        console.log("Fetching basketball matches from SportsDB...");
 
         const today = new Date().toISOString().split("T")[0];
 
-        const url = `${BASE_URL}/${API_KEY}/eventsday.php?d=${today}&s=Basketball`;
+        const url = `${BASE_URL}/eventsday.php?d=${today}&s=Basketball`;
+
         const res = await fetch(url);
+        const data = await res.json();
 
-        if (!res.ok) {
-            console.log("Basketball API response not OK");
-            return [];
-        }
+        if (!data.events) return [];
 
-        const json = await res.json();
-        const events = json.events || [];
+        const importantLeagues = [
+            "NBA",
+            "FIBA World Cup",
+            "EuroLeague"
+        ];
 
-        const matches = events
-            .filter(e => isImportantBasketball(e.strLeague || ""))
-            .map(event => ({
-                id: `basketball_${event.idEvent}`,
-                externalMatchId: `basketball_${event.idEvent}`,
-                sport: "basketball",
-                league: event.strLeague,
-                team1: event.strHomeTeam,
-                team2: event.strAwayTeam,
-                team1Logo: null,
-                team2Logo: null,
-                startTime: event.dateEvent,
-                status: "upcoming",
-                bettingOpen: true
-            }));
+        const filtered = data.events.filter(e =>
+            importantLeagues.some(l =>
+                (e.strLeague || "").includes(l)
+            )
+        );
 
-        console.log("Basketball matches:", matches.length);
-
-        return matches;
+        return filtered.map(e => formatMatch(e, "basketball"));
 
     } catch (err) {
         console.error("Basketball API error:", err.message);
