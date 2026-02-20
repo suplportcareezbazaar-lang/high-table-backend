@@ -1,7 +1,7 @@
-const { getCricketMatches } = require("./services/cricketApi");
-const { getFootballMatches } = require("./services/footballApi");
-const { getBasketballMatches } = require("./services/basketballApi");
-const { getMmaMatches } = require("./services/mmaApi");
+const { getCricketMatches } = require("./cricketApi");
+const { getFootballMatches } = require("./footballApi");
+const { getBasketballMatches } = require("./basketballApi");
+const { getMmaMatches } = require("./mmaApi");
 
 /* ================= MATCH AGGREGATOR ================= */
 
