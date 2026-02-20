@@ -1,24 +1,8 @@
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json/1";
-
-function formatMatch(event, sport) {
-    return {
-        id: `${sport}_${event.idEvent}`,
-        externalMatchId: `${sport}_${event.idEvent}`,
-        sport,
-        league: event.strLeague || sport,
-        team1: event.strHomeTeam,
-        team2: event.strAwayTeam,
-        team1Logo: null,
-        team2Logo: null,
-        startTime: event.dateEvent + "T00:00:00",
-        status: "upcoming",
-        bettingOpen: true
-    };
-}
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
 
 async function getBasketballMatches() {
     try {
-        console.log("Fetching basketball matches from SportsDB...");
+        console.log("Fetching basketball matches...");
 
         const today = new Date().toISOString().split("T")[0];
 
@@ -29,19 +13,21 @@ async function getBasketballMatches() {
 
         if (!data.events) return [];
 
-        const importantLeagues = [
-            "NBA",
-            "FIBA World Cup",
-            "EuroLeague"
-        ];
-
-        const filtered = data.events.filter(e =>
-            importantLeagues.some(l =>
-                (e.strLeague || "").includes(l)
-            )
-        );
-
-        return filtered.map(e => formatMatch(e, "basketball"));
+        return data.events.map(event => ({
+            id: `basketball_${event.idEvent}`,
+            externalMatchId: `basketball_${event.idEvent}`,
+            sport: "basketball",
+            league: event.strLeague,
+            team1: event.strHomeTeam,
+            team2: event.strAwayTeam,
+            team1Logo: null,
+            team2Logo: null,
+            startTime: event.dateEvent + "T" + (event.strTime || "00:00:00"),
+            status: "upcoming",
+            bettingOpen: true,
+            leagueLogo: null,
+            sportLogo: "/assets/logos/basketball.png"
+        }));
 
     } catch (err) {
         console.error("Basketball API error:", err.message);
