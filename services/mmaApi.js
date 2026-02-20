@@ -1,56 +1,33 @@
-const API_KEY = process.env.SPORTSDB_KEY || "1";
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
-
-/* ================= FILTER ================= */
-
-function isImportantMMA(leagueName = "") {
-    leagueName = leagueName.toLowerCase();
-
-    return (
-        leagueName.includes("ufc") ||
-        leagueName.includes("bellator") ||
-        leagueName.includes("one championship")
-    );
-}
-
-/* ================= MAIN ================= */
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
 
 async function getMmaMatches() {
     try {
-        console.log("Fetching MMA events...");
+        console.log("Fetching MMA matches...");
 
         const today = new Date().toISOString().split("T")[0];
 
-        const url = `${BASE_URL}/${API_KEY}/eventsday.php?d=${today}&s=MMA`;
+        const url = `${BASE_URL}/eventsday.php?d=${today}&s=Mixed Martial Arts`;
+
         const res = await fetch(url);
+        const data = await res.json();
 
-        if (!res.ok) {
-            console.log("MMA API response not OK");
-            return [];
-        }
+        if (!data.events) return [];
 
-        const json = await res.json();
-        const events = json.events || [];
-
-        const matches = events
-            .filter(e => isImportantMMA(e.strLeague || ""))
-            .map(event => ({
-                id: `mma_${event.idEvent}`,
-                externalMatchId: `mma_${event.idEvent}`,
-                sport: "mma",
-                league: event.strLeague || "MMA",
-                team1: event.strHomeTeam || event.strEvent || "Fighter 1",
-                team2: event.strAwayTeam || "Fighter 2",
-                team1Logo: null,
-                team2Logo: null,
-                startTime: event.dateEvent,
-                status: "upcoming",
-                bettingOpen: true
-            }));
-
-        console.log("MMA matches:", matches.length);
-
-        return matches;
+        return data.events.map(event => ({
+            id: `mma_${event.idEvent}`,
+            externalMatchId: `mma_${event.idEvent}`,
+            sport: "mma",
+            league: event.strLeague,
+            team1: event.strHomeTeam,
+            team2: event.strAwayTeam,
+            team1Logo: null,
+            team2Logo: null,
+            startTime: event.dateEvent + "T" + (event.strTime || "00:00:00"),
+            status: "upcoming",
+            bettingOpen: true,
+            leagueLogo: null,
+            sportLogo: "/assets/logos/mma.png"
+        }));
 
     } catch (err) {
         console.error("MMA API error:", err.message);
