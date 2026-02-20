@@ -1,31 +1,45 @@
-const API_KEY = process.env.API_SPORTS_KEY;
+const API_KEY = process.env.SPORTSDB_KEY || "1";
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
 
-async function getMmaMatches() {
+function isImportantMMA(leagueName = "") {
+    leagueName = leagueName.toLowerCase();
+
+    return (
+        leagueName.includes("ufc") ||
+        leagueName.includes("bellator") ||
+        leagueName.includes("one championship")
+    );
+}
+
+async function getMMAMatches() {
     try {
-        const url = `https://v1.mma.api-sports.io/fights?league=UFC`;
+        console.log("Fetching MMA events...");
 
-        const res = await fetch(url, {
-            headers: {
-                "x-apisports-key": API_KEY
-            }
-        });
+        const today = new Date().toISOString().split("T")[0];
 
+        const url = `${BASE_URL}/${API_KEY}/eventsday.php?d=${today}&s=MMA`;
+        const res = await fetch(url);
         const json = await res.json();
-        const data = json.response || [];
 
-        const matches = data.map(fight => ({
-            id: `mma_${fight.id}`,
-            externalMatchId: `mma_${fight.id}`,
-            sport: "mma",
-            league: "UFC",
-            team1: fight.fighters[0]?.name,
-            team2: fight.fighters[1]?.name,
-            team1Logo: null,
-            team2Logo: null,
-            startTime: fight.date,
-            status: fight.status === "Scheduled" ? "upcoming" : "live",
-            bettingOpen: true
-        }));
+        const events = json.events || [];
+
+        const matches = events
+            .filter(e => isImportantMMA(e.strLeague))
+            .map(event => ({
+                id: `mma_${event.idEvent}`,
+                externalMatchId: `mma_${event.idEvent}`,
+                sport: "mma",
+                league: event.strLeague,
+                team1: event.strHomeTeam || event.strEvent,
+                team2: event.strAwayTeam || "TBD",
+                team1Logo: null,
+                team2Logo: null,
+                startTime: event.dateEvent,
+                status: "upcoming",
+                bettingOpen: true
+            }));
+
+        console.log("MMA matches:", matches.length);
 
         return matches;
 
@@ -35,4 +49,4 @@ async function getMmaMatches() {
     }
 }
 
-module.exports = { getMmaMatches };
+module.exports = { getMMAMatches };
