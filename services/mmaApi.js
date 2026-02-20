@@ -1,46 +1,33 @@
-const axios = require("axios");
-
 const API_KEY = process.env.API_SPORTS_KEY;
-const BASE_URL = "https://v1.mma.api-sports.io";
-
-function isBettingOpen(startTime) {
-    if (!startTime) return false;
-    return (new Date(startTime) - Date.now()) / 60000 > 30;
-}
 
 async function getMmaMatches() {
-    if (!API_KEY) return [];
-
     try {
-        const response = await axios.get(`${BASE_URL}/fights`, {
-            headers: { "x-apisports-key": API_KEY }
+        const url = `https://v1.mma.api-sports.io/fights?league=UFC`;
+
+        const res = await fetch(url, {
+            headers: {
+                "x-apisports-key": API_KEY
+            }
         });
 
-        const fights = response.data?.response || [];
+        const json = await res.json();
+        const data = json.response || [];
 
-        const filtered = fights.filter(f =>
-            f.league?.name?.toLowerCase().includes("ufc")
-        );
+        const matches = data.map(fight => ({
+            id: `mma_${fight.id}`,
+            externalMatchId: `mma_${fight.id}`,
+            sport: "mma",
+            league: "UFC",
+            team1: fight.fighters[0]?.name,
+            team2: fight.fighters[1]?.name,
+            team1Logo: null,
+            team2Logo: null,
+            startTime: fight.date,
+            status: fight.status === "Scheduled" ? "upcoming" : "live",
+            bettingOpen: true
+        }));
 
-        console.log("MMA important fights:", filtered.length);
-
-        return filtered.map(f => {
-            const id = `mma_${f.id}`;
-
-            return {
-                id,
-                externalMatchId: id,
-                sport: "mma",
-                league: f.league?.name || "MMA",
-                team1: f.fighters?.home?.name,
-                team2: f.fighters?.away?.name,
-                team1Logo: null,
-                team2Logo: null,
-                startTime: f.date,
-                status: "upcoming",
-                bettingOpen: isBettingOpen(f.date)
-            };
-        });
+        return matches;
 
     } catch (err) {
         console.error("MMA API error:", err.message);
