@@ -1,20 +1,4 @@
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json/1";
-
-function formatMatch(event, sport) {
-    return {
-        id: `${sport}_${event.idEvent}`,
-        externalMatchId: `${sport}_${event.idEvent}`,
-        sport,
-        league: event.strLeague || sport,
-        team1: event.strHomeTeam,
-        team2: event.strAwayTeam,
-        team1Logo: null,
-        team2Logo: null,
-        startTime: event.dateEvent + "T00:00:00",
-        status: "upcoming",
-        bettingOpen: true
-    };
-}
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
 
 async function getFootballMatches() {
     try {
@@ -29,21 +13,21 @@ async function getFootballMatches() {
 
         if (!data.events) return [];
 
-        const importantLeagues = [
-            "English Premier League",
-            "UEFA Champions League",
-            "La Liga",
-            "FIFA World Cup",
-            "UEFA Euro"
-        ];
-
-        const filtered = data.events.filter(e =>
-            importantLeagues.some(l =>
-                (e.strLeague || "").includes(l)
-            )
-        );
-
-        return filtered.map(e => formatMatch(e, "football"));
+        return data.events.map(event => ({
+            id: `football_${event.idEvent}`,
+            externalMatchId: `football_${event.idEvent}`,
+            sport: "football",
+            league: event.strLeague,
+            team1: event.strHomeTeam,
+            team2: event.strAwayTeam,
+            team1Logo: null,
+            team2Logo: null,
+            startTime: event.dateEvent + "T" + (event.strTime || "00:00:00"),
+            status: "upcoming",
+            bettingOpen: true,
+            leagueLogo: null,
+            sportLogo: "/assets/logos/football.png"
+        }));
 
     } catch (err) {
         console.error("Football API error:", err.message);
