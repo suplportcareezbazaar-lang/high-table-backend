@@ -1,78 +1,52 @@
-const axios = require("axios");
-
 const API_KEY = process.env.API_SPORTS_KEY;
-const BASE_URL = "https://v1.basketball.api-sports.io";
 
-function isBettingOpen(startTime) {
-    if (!startTime) return false;
-    return (new Date(startTime) - Date.now()) / 60000 > 30;
-}
+function isImportantBasketballMatch(match) {
+    const leagueName = match.league?.name?.toLowerCase() || "";
 
-function mapBasketStatus(code) {
-    if (!code) return "upcoming";
-    if (["FT"].includes(code)) return "finished";
-    if (["Q1","Q2","Q3","Q4","OT","LIVE"].includes(code)) return "live";
-    return "upcoming";
-}
+    const importantLeagues = [
+        "nba",
+        "fiba",
+        "euroleague",
+        "olympic"
+    ];
 
-function isImportantLeague(name = "") {
-    const n = name.toLowerCase();
-
-    return (
-        n.includes("nba") ||
-        n.includes("fiba") ||
-        n.includes("world cup") ||
-        n.includes("olympic") ||
-        n.includes("euroleague")
+    return importantLeagues.some(name =>
+        leagueName.includes(name)
     );
 }
 
 async function getBasketballMatches() {
-    if (!API_KEY) return [];
-
-    const today = new Date();
-    const tomorrow = new Date();
-    tomorrow.setDate(today.getDate() + 1);
-
-    const formatDate = d => d.toISOString().slice(0, 10);
-
     try {
-        const responses = await Promise.all([
-            axios.get(`${BASE_URL}/games`, {
-                headers: { "x-apisports-key": API_KEY },
-                params: { date: formatDate(today) }
-            }),
-            axios.get(`${BASE_URL}/games`, {
-                headers: { "x-apisports-key": API_KEY },
-                params: { date: formatDate(tomorrow) }
-            })
-        ]);
+        const today = new Date().toISOString().split("T")[0];
 
-        const games = responses.flatMap(r => r.data?.response || []);
+        const url = `https://v1.basketball.api-sports.io/games?date=${today}`;
 
-        const filtered = games
-            .filter(g => isImportantLeague(g.league?.name))
-            .filter(g => g.teams?.home && g.teams?.away);
-
-        console.log("Basketball important matches:", filtered.length);
-
-        return filtered.map(g => {
-            const id = `basketball_${g.id}`;
-
-            return {
-                id,
-                externalMatchId: id,
-                sport: "basketball",
-                league: g.league?.name || "Basketball",
-                team1: g.teams.home.name,
-                team2: g.teams.away.name,
-                team1Logo: g.teams.home.logo,
-                team2Logo: g.teams.away.logo,
-                startTime: g.date,
-                status: mapBasketStatus(g.status?.short),
-                bettingOpen: isBettingOpen(g.date)
-            };
+        const res = await fetch(url, {
+            headers: {
+                "x-apisports-key": API_KEY
+            }
         });
+
+        const json = await res.json();
+        const data = json.response || [];
+
+        const matches = data
+            .filter(isImportantBasketballMatch)
+            .map(match => ({
+                id: `basketball_${match.id}`,
+                externalMatchId: `basketball_${match.id}`,
+                sport: "basketball",
+                league: match.league.name,
+                team1: match.teams.home.name,
+                team2: match.teams.away.name,
+                team1Logo: match.teams.home.logo,
+                team2Logo: match.teams.away.logo,
+                startTime: match.date,
+                status: match.status.short === "NS" ? "upcoming" : "live",
+                bettingOpen: true
+            }));
+
+        return matches;
 
     } catch (err) {
         console.error("Basketball API error:", err.message);
