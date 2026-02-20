@@ -1,54 +1,58 @@
-const API_KEY = process.env.API_SPORTS_KEY;
+const API_KEY = process.env.SPORTSDB_KEY || "1";
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
 
-function isImportantFootballMatch(match) {
-    const leagueName = match.league?.name?.toLowerCase() || "";
-    const country = match.league?.country?.toLowerCase() || "";
+function isBettingOpen(startTime) {
+    if (!startTime) return false;
+    return (new Date(startTime) - Date.now()) / 60000 > 30;
+}
 
-    const importantLeagues = [
-        "world cup",
-        "euro",
-        "copa america",
-        "asian cup",
-        "nations league",
-        "champions league",
-        "europa league"
-    ];
+function normalizeStatus(event) {
+    if (event.strStatus === "Match Finished") return "finished";
+    if (event.strStatus === "Live") return "live";
+    return "upcoming";
+}
 
-    return importantLeagues.some(name =>
-        leagueName.includes(name)
+function isImportantLeague(leagueName = "") {
+    leagueName = leagueName.toLowerCase();
+
+    return (
+        leagueName.includes("fifa") ||
+        leagueName.includes("uefa") ||
+        leagueName.includes("champions league") ||
+        leagueName.includes("world cup") ||
+        leagueName.includes("euro")
     );
 }
 
 async function getFootballMatches() {
     try {
+        console.log("Fetching football matches from SportsDB...");
+
         const today = new Date().toISOString().split("T")[0];
 
-        const url = `https://v3.football.api-sports.io/fixtures?from=${today}&to=${today}`;
-        
-        const res = await fetch(url, {
-            headers: {
-                "x-apisports-key": API_KEY
-            }
-        });
-
+        const url = `${BASE_URL}/${API_KEY}/eventsday.php?d=${today}&s=Soccer`;
+        const res = await fetch(url);
         const json = await res.json();
-        const data = json.response || [];
 
-        const matches = data
-            .filter(isImportantFootballMatch)
-            .map(match => ({
-                id: `football_${match.fixture.id}`,
-                externalMatchId: `football_${match.fixture.id}`,
+        const events = json.events || [];
+
+        const matches = events
+            .filter(e => isImportantLeague(e.strLeague))
+            .map(event => ({
+                id: `football_${event.idEvent}`,
+                externalMatchId: `football_${event.idEvent}`,
                 sport: "football",
-                league: match.league.name,
-                team1: match.teams.home.name,
-                team2: match.teams.away.name,
-                team1Logo: match.teams.home.logo,
-                team2Logo: match.teams.away.logo,
-                startTime: match.fixture.date,
-                status: match.fixture.status.short === "NS" ? "upcoming" : "live",
-                bettingOpen: true
+                league: event.strLeague,
+                team1: event.strHomeTeam,
+                team2: event.strAwayTeam,
+                team1Logo: event.strHomeTeamBadge || null,
+                team2Logo: event.strAwayTeamBadge || null,
+                startTime: event.dateEvent + "T" + (event.strTime || "00:00:00"),
+                status: normalizeStatus(event),
+                bettingOpen: isBettingOpen(event.dateEvent)
             }));
+
+        console.log("Football matches:", matches.length);
 
         return matches;
 
