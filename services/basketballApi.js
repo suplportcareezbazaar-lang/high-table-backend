@@ -1,50 +1,46 @@
-const API_KEY = process.env.API_SPORTS_KEY;
+const API_KEY = process.env.SPORTSDB_KEY || "1";
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
 
-function isImportantBasketballMatch(match) {
-    const leagueName = match.league?.name?.toLowerCase() || "";
+function isImportantLeague(leagueName = "") {
+    leagueName = leagueName.toLowerCase();
 
-    const importantLeagues = [
-        "nba",
-        "fiba",
-        "euroleague",
-        "olympic"
-    ];
-
-    return importantLeagues.some(name =>
-        leagueName.includes(name)
+    return (
+        leagueName.includes("nba") ||
+        leagueName.includes("fiba") ||
+        leagueName.includes("world cup") ||
+        leagueName.includes("euroleague")
     );
 }
 
 async function getBasketballMatches() {
     try {
+        console.log("Fetching basketball matches...");
+
         const today = new Date().toISOString().split("T")[0];
 
-        const url = `https://v1.basketball.api-sports.io/games?date=${today}`;
-
-        const res = await fetch(url, {
-            headers: {
-                "x-apisports-key": API_KEY
-            }
-        });
-
+        const url = `${BASE_URL}/${API_KEY}/eventsday.php?d=${today}&s=Basketball`;
+        const res = await fetch(url);
         const json = await res.json();
-        const data = json.response || [];
 
-        const matches = data
-            .filter(isImportantBasketballMatch)
-            .map(match => ({
-                id: `basketball_${match.id}`,
-                externalMatchId: `basketball_${match.id}`,
+        const events = json.events || [];
+
+        const matches = events
+            .filter(e => isImportantLeague(e.strLeague))
+            .map(event => ({
+                id: `basketball_${event.idEvent}`,
+                externalMatchId: `basketball_${event.idEvent}`,
                 sport: "basketball",
-                league: match.league.name,
-                team1: match.teams.home.name,
-                team2: match.teams.away.name,
-                team1Logo: match.teams.home.logo,
-                team2Logo: match.teams.away.logo,
-                startTime: match.date,
-                status: match.status.short === "NS" ? "upcoming" : "live",
+                league: event.strLeague,
+                team1: event.strHomeTeam,
+                team2: event.strAwayTeam,
+                team1Logo: event.strHomeTeamBadge || null,
+                team2Logo: event.strAwayTeamBadge || null,
+                startTime: event.dateEvent,
+                status: "upcoming",
                 bettingOpen: true
             }));
+
+        console.log("Basketball matches:", matches.length);
 
         return matches;
 
