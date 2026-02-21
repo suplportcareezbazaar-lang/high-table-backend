@@ -1,51 +1,65 @@
-const axios = require("axios");
+const fetch = require("node-fetch");
 
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json/123";
+const SPORTSDB_KEY = process.env.SPORTSDB_KEY;
 
-// English Premier League ID = 4328
-// You can change league ID later if needed
-const LEAGUE_ID = 4328;
+const IMPORTANT_LEAGUES = [
+    "4328", // English Premier League
+    "4335", // La Liga
+    "4331", // Bundesliga
+    "4332", // Serie A
+    "4480"  // UEFA Champions League
+];
 
-async function getFootballMatches() {
+function isWithinHours(dateStr, hours = 72) {
+    const now = new Date();
+    const matchDate = new Date(dateStr);
+    const diffHours = (matchDate - now) / (1000 * 60 * 60);
+    return diffHours >= 0 && diffHours <= hours;
+}
+
+async function fetchLeagueEvents(leagueId) {
     try {
-        console.log("⚽ Fetching football upcoming matches...");
+        const url = `https://www.thesportsdb.com/api/v1/json/${SPORTSDB_KEY}/eventsnextleague.php?id=${leagueId}`;
+        const response = await fetch(url);
+        const data = await response.json();
 
-        const response = await axios.get(
-            `${BASE_URL}/eventsnextleague.php?id=${LEAGUE_ID}`
-        );
+        if (!data.events) return [];
 
-        const events = response.data?.events || [];
+        return data.events
+            .filter(event => isWithinHours(event.strTimestamp, 72))
+            .map(event => ({
+                id: `football_${event.idEvent}`,
+                externalMatchId: event.idEvent,
+                sport: "football",
+                league: event.strLeague,
+                team1: event.strHomeTeam,
+                team2: event.strAwayTeam,
+                team1Logo: event.strHomeTeamBadge || null,
+                team2Logo: event.strAwayTeamBadge || null,
+                startTime: event.strTimestamp,
+                status: "upcoming",
+                bettingOpen: true,
+                leagueLogo: event.strLeagueBadge || null,
+                sportLogo: "/assets/logos/football.png"
+            }));
 
-        if (!events.length) {
-            console.log("No football events returned");
-            return [];
-        }
-
-        const matches = events.map(event => ({
-            id: `football_${event.idEvent}`,
-            externalMatchId: event.idEvent,
-            sport: "football",
-            league: event.strLeague,
-            team1: event.strHomeTeam,
-            team2: event.strAwayTeam,
-            team1Logo: event.strHomeTeamBadge || null,
-            team2Logo: event.strAwayTeamBadge || null,
-            startTime: event.dateEvent + "T" + (event.strTime || "00:00:00"),
-            status: "upcoming",
-            bettingOpen: true,
-            leagueLogo: null,
-            sportLogo: "/assets/logos/football.png"
-        }));
-
-        console.log("Football matches fetched:", matches.length);
-        return matches;
-
-    } catch (error) {
-        console.error("Football API error:", error.message);
+    } catch (err) {
+        console.error("Football API error:", err.message);
         return [];
     }
 }
 
-module.exports = {
-    getFootballMatches
-};
+async function getFootballMatches() {
+    console.log("⚽ Fetching important football leagues...");
+
+    let allMatches = [];
+
+    for (const leagueId of IMPORTANT_LEAGUES) {
+        const matches = await fetchLeagueEvents(leagueId);
+        allMatches = [...allMatches, ...matches];
+    }
+
+    return allMatches;
+}
+
+module.exports = { getFootballMatches };
