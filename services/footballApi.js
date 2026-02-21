@@ -1,55 +1,51 @@
-const SPORTSDB_KEY = process.env.SPORTSDB_KEY;
-const BASE_URL = `https://www.thesportsdb.com/api/v1/json/${SPORTSDB_KEY}`;
+const axios = require("axios");
 
-/* ================= STATUS NORMALIZER ================= */
+const BASE_URL = "https://www.thesportsdb.com/api/v1/json/123";
 
-function normalizeStatus(event) {
-    if (!event.strTimestamp) return "upcoming";
-
-    const now = new Date();
-    const matchTime = new Date(event.strTimestamp);
-
-    if (event.strStatus === "Match Finished") return "finished";
-    if (event.strStatus === "Live") return "live";
-
-    if (matchTime <= now) return "live";
-
-    return "upcoming";
-}
-
-/* ================= MAIN FUNCTION ================= */
+// English Premier League ID = 4328
+// You can change league ID later if needed
+const LEAGUE_ID = 4328;
 
 async function getFootballMatches() {
     try {
-        console.log("⚽ Fetching football matches...");
+        console.log("⚽ Fetching football upcoming matches...");
 
-        const today = new Date().toISOString().split("T")[0];
+        const response = await axios.get(
+            `${BASE_URL}/eventsnextleague.php?id=${LEAGUE_ID}`
+        );
 
-        const res = await fetch(`${BASE_URL}/eventsday.php?d=${today}&s=Soccer`);
-        const data = await res.json();
+        const events = response.data?.events || [];
 
-        if (!data.events) return [];
+        if (!events.length) {
+            console.log("No football events returned");
+            return [];
+        }
 
-        return data.events.map(event => ({
+        const matches = events.map(event => ({
             id: `football_${event.idEvent}`,
-            externalMatchId: `football_${event.idEvent}`,
+            externalMatchId: event.idEvent,
             sport: "football",
             league: event.strLeague,
             team1: event.strHomeTeam,
             team2: event.strAwayTeam,
             team1Logo: event.strHomeTeamBadge || null,
             team2Logo: event.strAwayTeamBadge || null,
-            startTime: event.strTimestamp,
-            status: normalizeStatus(event),
+            startTime: event.dateEvent + "T" + (event.strTime || "00:00:00"),
+            status: "upcoming",
             bettingOpen: true,
             leagueLogo: null,
             sportLogo: "/assets/logos/football.png"
         }));
 
-    } catch (err) {
-        console.error("Football API error:", err.message);
+        console.log("Football matches fetched:", matches.length);
+        return matches;
+
+    } catch (error) {
+        console.error("Football API error:", error.message);
         return [];
     }
 }
 
-module.exports = { getFootballMatches };
+module.exports = {
+    getFootballMatches
+};
