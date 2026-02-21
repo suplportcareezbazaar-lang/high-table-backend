@@ -1,60 +1,52 @@
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
+const fetch = require("node-fetch");
 
-function getStatus(event) {
+const SPORTSDB_KEY = process.env.SPORTSDB_KEY;
+const BASE_URL = `https://www.thesportsdb.com/api/v1/json/${SPORTSDB_KEY}`;
+
+/* ================= STATUS NORMALIZER ================= */
+
+function normalizeStatus(event) {
+    if (!event.strTimestamp) return "upcoming";
+
+    const now = new Date();
+    const matchTime = new Date(event.strTimestamp);
+
     if (event.strStatus === "Match Finished") return "finished";
     if (event.strStatus === "Live") return "live";
+
+    if (matchTime <= now) return "live";
+
     return "upcoming";
 }
 
-function formatMatch(event) {
-    return {
-        id: `football_${event.idEvent}`,
-        externalMatchId: `football_${event.idEvent}`,
-        sport: "football",
-        league: event.strLeague,
-        team1: event.strHomeTeam,
-        team2: event.strAwayTeam,
-        team1Logo: null,
-        team2Logo: null,
-        startTime: `${event.dateEvent}T${event.strTime || "00:00:00"}`,
-        status: getStatus(event),
-        bettingOpen: event.strStatus !== "Match Finished",
-        leagueLogo: null,
-        sportLogo: "/assets/logos/football.png"
-    };
-}
-
-async function fetchDay(date) {
-    const url = `${BASE_URL}/eventsday.php?d=${date}&s=Soccer`;
-    const res = await fetch(url);
-    const json = await res.json();
-    return json.events || [];
-}
+/* ================= MAIN FUNCTION ================= */
 
 async function getFootballMatches() {
     try {
-        console.log("Fetching football matches...");
+        console.log("⚽ Fetching football matches...");
 
-        const today = new Date();
-        const dates = [];
+        const today = new Date().toISOString().split("T")[0];
 
-        for (let i = 0; i < 3; i++) {
-            const d = new Date(today);
-            d.setDate(today.getDate() + i);
-            dates.push(d.toISOString().split("T")[0]);
-        }
+        const res = await fetch(`${BASE_URL}/eventsday.php?d=${today}&s=Soccer`);
+        const data = await res.json();
 
-        const results = await Promise.all(dates.map(fetchDay));
-        const events = results.flat();
+        if (!data.events) return [];
 
-        const unique = new Map();
-        events.forEach(e => {
-            if (!unique.has(e.idEvent)) {
-                unique.set(e.idEvent, formatMatch(e));
-            }
-        });
-
-        return Array.from(unique.values());
+        return data.events.map(event => ({
+            id: `football_${event.idEvent}`,
+            externalMatchId: `football_${event.idEvent}`,
+            sport: "football",
+            league: event.strLeague,
+            team1: event.strHomeTeam,
+            team2: event.strAwayTeam,
+            team1Logo: event.strHomeTeamBadge || null,
+            team2Logo: event.strAwayTeamBadge || null,
+            startTime: event.strTimestamp,
+            status: normalizeStatus(event),
+            bettingOpen: true,
+            leagueLogo: null,
+            sportLogo: "/assets/logos/football.png"
+        }));
 
     } catch (err) {
         console.error("Football API error:", err.message);
