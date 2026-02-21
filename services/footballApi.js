@@ -1,13 +1,11 @@
-const fetch = require("node-fetch");
-
 const SPORTSDB_KEY = process.env.SPORTSDB_KEY;
 
 const IMPORTANT_LEAGUES = [
-    "4328", // English Premier League
+    "4328", // EPL
     "4335", // La Liga
     "4331", // Bundesliga
     "4332", // Serie A
-    "4480"  // UEFA Champions League
+    "4480"  // Champions League
 ];
 
 function isWithinHours(dateStr, hours = 72) {
@@ -20,13 +18,14 @@ function isWithinHours(dateStr, hours = 72) {
 async function fetchLeagueEvents(leagueId) {
     try {
         const url = `https://www.thesportsdb.com/api/v1/json/${SPORTSDB_KEY}/eventsnextleague.php?id=${leagueId}`;
+
         const response = await fetch(url);
         const data = await response.json();
 
         if (!data.events) return [];
 
         return data.events
-            .filter(event => isWithinHours(event.strTimestamp, 72))
+            .filter(event => event.strTimestamp && isWithinHours(event.strTimestamp, 72))
             .map(event => ({
                 id: `football_${event.idEvent}`,
                 externalMatchId: event.idEvent,
