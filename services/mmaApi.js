@@ -1,65 +1,52 @@
-const BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
+const SPORTSDB_KEY = process.env.SPORTSDB_KEY || "1";
 
-function getStatus(event) {
-    if (event.strStatus === "Match Finished") return "finished";
-    if (event.strStatus === "Live") return "live";
-    return "upcoming";
+function getDateString(offsetDays = 0) {
+    const date = new Date();
+    date.setDate(date.getDate() + offsetDays);
+    return date.toISOString().split("T")[0];
 }
 
-function formatMatch(event) {
-    return {
-        id: `mma_${event.idEvent}`,
-        externalMatchId: `mma_${event.idEvent}`,
-        sport: "mma",
-        league: event.strLeague,
-        team1: event.strHomeTeam || event.strEvent,
-        team2: event.strAwayTeam || "",
-        team1Logo: null,
-        team2Logo: null,
-        startTime: `${event.dateEvent}T${event.strTime || "00:00:00"}`,
-        status: getStatus(event),
-        bettingOpen: event.strStatus !== "Match Finished",
-        leagueLogo: null,
-        sportLogo: "/assets/logos/mma.png"
-    };
-}
-
-async function fetchDay(date) {
-    const url = `${BASE_URL}/eventsday.php?d=${date}&s=MMA`;
-    const res = await fetch(url);
-    const json = await res.json();
-    return json.events || [];
-}
-
-async function getMmaMatches() {
+async function fetchEventsByDate(dateStr) {
     try {
-        console.log("Fetching MMA matches...");
+        const url = `https://www.thesportsdb.com/api/v1/json/${SPORTSDB_KEY}/eventsday.php?d=${dateStr}&s=MMA`;
 
-        const today = new Date();
-        const dates = [];
+        const response = await fetch(url);
+        const text = await response.text();
 
-        for (let i = 0; i < 7; i++) {
-            const d = new Date(today);
-            d.setDate(today.getDate() + i);
-            dates.push(d.toISOString().split("T")[0]);
-        }
+        if (text.startsWith("<")) return [];
 
-        const results = await Promise.all(dates.map(fetchDay));
-        const events = results.flat();
+        const data = JSON.parse(text);
+        if (!data.events) return [];
 
-        const unique = new Map();
-        events.forEach(e => {
-            if (!unique.has(e.idEvent)) {
-                unique.set(e.idEvent, formatMatch(e));
-            }
-        });
-
-        return Array.from(unique.values());
+        return data.events.map(event => ({
+            id: `mma_${event.idEvent}`,
+            externalMatchId: event.idEvent,
+            sport: "mma",
+            league: event.strLeague,
+            team1: event.strEvent,
+            team2: "",
+            team1Logo: null,
+            team2Logo: null,
+            startTime: event.strTimestamp,
+            status: "upcoming",
+            bettingOpen: true,
+            leagueLogo: null,
+            sportLogo: "/assets/logos/mma.png"
+        }));
 
     } catch (err) {
         console.error("MMA API error:", err.message);
         return [];
     }
+}
+
+async function getMmaMatches() {
+    let allMatches = [];
+    for (let i = 0; i <= 2; i++) {
+        const matches = await fetchEventsByDate(getDateString(i));
+        allMatches = [...allMatches, ...matches];
+    }
+    return allMatches;
 }
 
 module.exports = { getMmaMatches };
