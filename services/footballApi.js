@@ -1,5 +1,11 @@
 const BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
 
+function getStatus(event) {
+    if (event.strStatus === "Match Finished") return "finished";
+    if (event.strStatus === "Live") return "live";
+    return "upcoming";
+}
+
 function formatMatch(event) {
     return {
         id: `football_${event.idEvent}`,
@@ -11,8 +17,8 @@ function formatMatch(event) {
         team1Logo: null,
         team2Logo: null,
         startTime: `${event.dateEvent}T${event.strTime || "00:00:00"}`,
-        status: "upcoming",
-        bettingOpen: true,
+        status: getStatus(event),
+        bettingOpen: event.strStatus !== "Match Finished",
         leagueLogo: null,
         sportLogo: "/assets/logos/football.png"
     };
@@ -27,7 +33,7 @@ async function fetchDay(date) {
 
 async function getFootballMatches() {
     try {
-        console.log("Fetching football matches from SportsDB...");
+        console.log("Fetching football matches...");
 
         const today = new Date();
         const dates = [];
@@ -41,9 +47,14 @@ async function getFootballMatches() {
         const results = await Promise.all(dates.map(fetchDay));
         const events = results.flat();
 
-        console.log("Football matches found:", events.length);
+        const unique = new Map();
+        events.forEach(e => {
+            if (!unique.has(e.idEvent)) {
+                unique.set(e.idEvent, formatMatch(e));
+            }
+        });
 
-        return events.map(formatMatch);
+        return Array.from(unique.values());
 
     } catch (err) {
         console.error("Football API error:", err.message);
